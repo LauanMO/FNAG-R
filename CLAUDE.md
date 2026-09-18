@@ -20,7 +20,9 @@ Regras:
 ## Ferramentas
 - Toolchain via Rokit (`rokit.toml`): rojo, selene, stylua. `rokit install` na raiz.
 - `rojo serve` + plugin do Rojo no Studio (`rojo plugin install`). Place privado com MaxPlayers = 1.
-- Formatar: `stylua src`. Lint: `selene src`.
+- Formatar: `stylua src`. Lint: `selene src`. Tipos: `luau-lsp analyze` (comando completo no README; precisa de `.luau-lsp/globalTypes.d.luau` e `sourcemap.json`).
+- Antes de cada commit: `stylua --check src`, `selene src`, `luau-lsp analyze` e `rojo build -o <tmp>.rbxl` sem erros.
+- No Windows, se o PATH ainda não tiver o Rokit na sessão: `export PATH="$HOME/.rokit/bin:$PATH"`.
 - Testar rápido: `Debug.timeScale = 5` no GameConfig (só tem efeito em Studio).
 
 ## Layout

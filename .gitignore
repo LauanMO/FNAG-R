@@ -5,6 +5,9 @@ sourcemap.json
 *.rbxl.lock
 *.rbxlx.lock
 
+# luau-lsp: definições de tipo do Roblox baixadas localmente (ver README)
+.luau-lsp/
+
 # selene (gera roblox.yml/roblox.toml a partir de std = "roblox")
 roblox.yml
 roblox.toml

@@ -23,8 +23,9 @@ Survival horror de gerenciamento: portas, energia, radar de rede e um terminal p
    rojo plugin install
    ```
 
-   O `rokit install` lê o `rokit.toml` e baixa as versões fixadas. Na primeira vez ele pede para
-   confiar nos autores (`rojo-rbx`, `Kampfkarren`, `JohnnyMorganz`); confirme.
+   O `rokit install` lê o `rokit.toml` e baixa as versões fixadas (rojo, selene, stylua, luau-lsp).
+   Na primeira vez ele pede para confiar nos autores (`rojo-rbx`, `Kampfkarren`, `JohnnyMorganz`); confirme.
+   O `rojo plugin install` copia o plugin para a pasta de plugins do Studio (reabra o Studio se estiver aberto).
 3. Crie um place **privado** no Roblox com `MaxPlayers = 1` (Game Settings → Places).
 
 ## Rodando
@@ -45,6 +46,23 @@ Para testar mais rápido, mude `Debug.timeScale = 5` em `src/shared/GameConfig.l
 stylua src     # formata (stylua.toml: 4 espaços, 120 colunas, aspas duplas)
 selene src     # lint
 ```
+
+Checagem de tipos em modo strict com o luau-lsp. Na primeira vez, baixe as definições de tipo do Roblox
+(a pasta `.luau-lsp/` fica fora do Git):
+
+```
+mkdir .luau-lsp
+curl -L -o .luau-lsp/globalTypes.d.luau https://raw.githubusercontent.com/JohnnyMorganz/luau-lsp/1.69.0/scripts/globalTypes.None.d.luau
+```
+
+Depois, a cada checagem:
+
+```
+rojo sourcemap default.project.json -o sourcemap.json
+luau-lsp analyze --definitions=.luau-lsp/globalTypes.d.luau --sourcemap=sourcemap.json --base-luaurc=.luaurc src
+```
+
+Sem saída e código de saída 0 = nenhum erro de tipo. Rode as três checagens antes de cada commit.
 
 ## Estrutura
 
