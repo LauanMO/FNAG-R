@@ -1,11 +1,13 @@
 --!strict
--- AudioController: todos os sons do cliente (PLANEJAMENTO 5.13). Fase 2: portas e blackout.
+-- AudioController: todos os sons do cliente (PLANEJAMENTO 5.13). Fase 2: portas e blackout. Fase 3: cues de
+-- inimigo (chegada/rebate) com volume por noite e ducking — enemy_arrival_* tem prioridade máxima (4.7).
 -- Sons posicionais ficam em âncoras invisíveis nas soleiras (esquerda/direita); sons de UI e alarme são 2D.
 -- Os assets reais entram em GameConfig.Audio.ids (Fase 6); cue sem asset é ignorado em silêncio.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
+local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -18,6 +20,10 @@ local AudioController = {}
 
 local GROUP_NAMES = { "Ambient", "Enemy", "UI", "Alarm" }
 local DEFAULT_GROUP = "UI"
+-- Grupos que abaixam quando um inimigo chega na soleira (5.13)
+local DUCKED_GROUPS = { "Ambient", "UI", "Alarm" }
+local DUCK_ATTACK_SECONDS = 0.05 -- apresentação: descida quase instantânea, subida suave
+local DUCK_RELEASE_SECONDS = 0.4
 
 -- Cues que saem de um lado da sala: uma cópia por soleira
 local POSITIONAL: { [string]: boolean } = {
@@ -29,16 +35,19 @@ local POSITIONAL: { [string]: boolean } = {
     [Enums.Cue.EnemyArrivalRight] = true,
 }
 
--- Grupo de mixagem por cue (5.13). Enemy tem prioridade e abaixa os outros (ducking, Fase 3).
+-- Grupo de mixagem por cue (5.13)
 local GROUP_OF: { [string]: string } = {
     [Enums.Cue.AmbientHum] = "Ambient",
     [Enums.Cue.AmbientLowPower] = "Ambient",
     [Enums.Cue.DoorClose] = "Ambient",
     [Enums.Cue.DoorOpen] = "Ambient",
     [Enums.Cue.DoorJammed] = "Ambient",
-    [Enums.Cue.DoorImpact] = "Ambient",
+    [Enums.Cue.DoorImpact] = "Enemy",
     [Enums.Cue.EnemyArrivalLeft] = "Enemy",
     [Enums.Cue.EnemyArrivalRight] = "Enemy",
+    [Enums.Cue.JumpscareSquare] = "Enemy",
+    [Enums.Cue.JumpscareTriangle] = "Enemy",
+    [Enums.Cue.JumpscareHexagon] = "Enemy",
     [Enums.Cue.VirusAlert] = "Alarm",
     [Enums.Cue.IntrusionAlarm] = "Alarm",
     [Enums.Cue.Blackout] = "Alarm",
@@ -55,6 +64,8 @@ local LOOPED: { [string]: boolean } = {
 local groups: { [string]: SoundGroup } = {}
 local sounds2D: { [string]: Sound } = {}
 local sounds3D: { [string]: { [string]: Sound } } = {} -- cue → lado → Sound
+local duckTweens: { Tween } = {}
+local duckToken = 0
 
 local function makeSound(cue: string, assetId: string, parent: Instance): Sound
     local sound = Instance.new("Sound")
@@ -66,6 +77,45 @@ local function makeSound(cue: string, assetId: string, parent: Instance): Sound
     sound.RollOffMaxDistance = GameConfig.Audio.rollOffMaxDistance
     sound.Parent = parent
     return sound
+end
+
+local function tweenDuckedGroups(seconds: number, volume: number)
+    for _, tween in duckTweens do
+        tween:Cancel()
+    end
+    table.clear(duckTweens)
+    local info = TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    for _, name in DUCKED_GROUPS do
+        local group = groups[name]
+        if group then
+            local tween = TweenService:Create(group, info, { Volume = volume })
+            tween:Play()
+            table.insert(duckTweens, tween)
+        end
+    end
+end
+
+-- Ducking (5.13): abaixa os outros grupos por arrivalDuckSeconds e devolve com suavidade
+local function duck()
+    duckToken += 1
+    local mine = duckToken
+    tweenDuckedGroups(DUCK_ATTACK_SECONDS, 1 - GameConfig.Audio.arrivalDuckAmount)
+    task.delay(GameConfig.Audio.arrivalDuckSeconds, function()
+        if mine == duckToken then
+            tweenDuckedGroups(DUCK_RELEASE_SECONDS, 1)
+        end
+    end)
+end
+
+local function onEnemyAudioCue(payload: Types.EnemyAudioCuePayload)
+    if payload.cue == Enums.EnemyCue.Arrival then
+        -- O cue mais importante do jogo (3.11): volume por noite (7.4) e prioridade sobre todo o resto
+        local cue = if payload.side == Enums.Side.Left then Enums.Cue.EnemyArrivalLeft else Enums.Cue.EnemyArrivalRight
+        AudioController.play(cue, payload.side, payload.volume)
+        duck()
+    elseif payload.cue == Enums.EnemyCue.Repelled then
+        AudioController.play(Enums.Cue.DoorImpact, payload.side) -- "BAM": o jogador aprende que deu certo
+    end
 end
 
 function AudioController.init()
@@ -111,13 +161,19 @@ function AudioController.init()
     Remotes.get(Enums.Remote.BlackoutStarted).OnClientEvent:Connect(function()
         AudioController.play(Enums.Cue.Blackout)
     end)
+    Remotes.get(Enums.Remote.EnemyAudioCue).OnClientEvent:Connect(onEnemyAudioCue)
+    Remotes.get(Enums.Remote.NightStarted).OnClientEvent:Connect(function()
+        duckToken += 1
+        tweenDuckedGroups(DUCK_ATTACK_SECONDS, 1)
+    end)
 end
 
--- Toca um cue do início. Para cues posicionais, side escolhe a soleira (padrão: esquerda).
-function AudioController.play(cue: string, side: Types.Side?)
+-- Toca um cue do início. side escolhe a soleira dos posicionais (padrão: esquerda); volume multiplica (padrão 1).
+function AudioController.play(cue: string, side: Types.Side?, volume: number?)
     local bySide = sounds3D[cue]
     local sound = if bySide then bySide[side or Enums.Side.Left] else sounds2D[cue]
     if sound then
+        sound.Volume = volume or 1
         sound:Play()
     end
 end

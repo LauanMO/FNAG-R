@@ -24,6 +24,8 @@ local DOOR_Z_MAX = -1
 local DOOR_HEIGHT = 7
 local DOOR_THICKNESS = 0.6
 local BUTTON_OFFSET_Z = 1 -- o botão fica logo ao sul da abertura, do lado de dentro
+local SILHOUETTE_SIZE = 3.5 -- cubo/prisma na soleira, do lado do corredor
+local SILHOUETTE_OFFSET = 1.9 -- distância da face externa da parede
 
 -- Corredores atrás das portas: escuros, com uma luz fraca ao longe
 local CORRIDOR_LENGTH = 30
@@ -49,10 +51,11 @@ local COLOR = {
     button = Color3.fromRGB(80, 200, 120), -- o DoorController repinta conforme o estado
     lightOn = Color3.fromRGB(255, 244, 214),
     corridorLight = Color3.fromRGB(120, 140, 170),
+    square = Color3.fromRGB(40, 90, 255), -- Quadrado Azul (3.8.1)
+    triangle = Color3.fromRGB(230, 40, 40), -- Triângulo Vermelho (3.8.2)
 }
 
-local function part(name: string, size: Vector3, position: Vector3, color: Color3, parent: Instance): Part
-    local p = Instance.new("Part")
+local function setup(p: BasePart, name: string, size: Vector3, position: Vector3, color: Color3, parent: Instance)
     p.Name = name
     p.Size = size
     p.CFrame = CFrame.new(position)
@@ -64,10 +67,21 @@ local function part(name: string, size: Vector3, position: Vector3, color: Color
     p.TopSurface = Enum.SurfaceType.Smooth
     p.BottomSurface = Enum.SurfaceType.Smooth
     p.Parent = parent
+end
+
+local function part(name: string, size: Vector3, position: Vector3, color: Color3, parent: Instance): Part
+    local p = Instance.new("Part")
+    setup(p, name, size, position, color, parent)
     return p
 end
 
-local function invisible(p: Part): Part
+local function wedge(name: string, size: Vector3, position: Vector3, color: Color3, parent: Instance): WedgePart
+    local p = Instance.new("WedgePart")
+    setup(p, name, size, position, color, parent)
+    return p
+end
+
+local function invisible(p: BasePart): BasePart
     p.Transparency = 1
     p.CanCollide = false
     p.CanQuery = false
@@ -190,6 +204,24 @@ local function buildDoor(parent: Instance, side: string)
             model
         )
     )
+
+    -- Silhueta do inimigo na soleira (3.4, 3.5b): invisível até o servidor mandar EnemyVisual
+    local silhouetteX = sign * (ROOM_HALF_W + WALL_T + SILHOUETTE_OFFSET)
+    local silhouetteSize = Vector3.new(SILHOUETTE_SIZE, SILHOUETTE_SIZE, SILHOUETTE_SIZE)
+    local silhouettePos = Vector3.new(silhouetteX, FLOOR_TOP + SILHOUETTE_SIZE / 2, doorZ)
+    local silhouette: BasePart = if side == Enums.Side.Left
+        then part(Enums.Office.Silhouette, silhouetteSize, silhouettePos, COLOR.square, model)
+        else wedge(Enums.Office.Silhouette, silhouetteSize, silhouettePos, COLOR.triangle, model)
+    silhouette.CFrame = CFrame.new(silhouettePos) * CFrame.Angles(0, sign * math.pi / 2, 0)
+    silhouette.Transparency = 1
+    silhouette.CanCollide = false
+    silhouette.CanQuery = false
+    local glow = Instance.new("PointLight")
+    glow.Enabled = false
+    glow.Brightness = 0.8
+    glow.Range = 9
+    glow.Color = if side == Enums.Side.Left then COLOR.square else COLOR.triangle
+    glow.Parent = silhouette
 
     model.Parent = parent
 end

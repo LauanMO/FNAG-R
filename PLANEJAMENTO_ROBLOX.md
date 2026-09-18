@@ -1300,6 +1300,8 @@ return PatrolAI
 
 Registrado na sessão com `scheduler:every("ai_square", cfg.tickSeconds, function() square:tick() end)`.
 
+**Implementação:** `PatrolAI.new(host, name, cfg, level)` recebe a sessão pela interface estrutural `Types.AIHost` (`rng`, `state`, `fireCue`, `setEnemyVisual`, `lose`, `inDawnGrace`) em vez do tipo `NightSession` — evita require circular e permite testar a IA com um host falso. O tick checa `inDawnGrace()` antes de sortear (3.1). A sessão registra as tarefas na ordem Quadrado → Triângulo; com `Debug.deterministicSeed` fixo, a sequência de sorteios é reproduzível.
+
 **`CircleAI`:** `tick()` → se `level > 0`, sorteia; se passa e não há `virusAlert` e `not terminalOpen`, cria `virusAlert = { remaining = fuse }` e dispara `VirusAlert`. Uma tarefa `circle_fuse` (1s) decrementa `remaining`; em 0 → `RadarService:killNextCamera()` e limpa o alerta. Quando o cliente abre o terminal com alerta ativo, `MinigameService:start(session)`.
 
 **`HexagonAI`:** `tick()` → sorteia; se passa → `FirewallService:breakLayer(session)`, que decrementa, sorteia um sistema íntegro, aplica (`corrupted[sys] = true` + efeito colateral: `doors.left.jammed = true`, etc.), e se `layers == 0` inicia `intrusionRemaining = 20` com tarefa `intrusion` (1s). `restoreLayer()` cancela a intrusão.
@@ -1473,18 +1475,20 @@ Cada fase termina em algo **jogável e testável** no Studio. Não avance sem o 
 
 **Arquivos:** `PatrolAI`, `EnemyVisual` (silhuetas), `JumpscareController`, `JumpscareGui`, `AudioController` (cues de inimigo + ducking).
 
-- [ ] `PatrolAI` (5.7) instanciado duas vezes a partir de `GameConfig.Patrol`.
-- [ ] Níveis lidos de `GameConfig.Nights[night]`.
-- [ ] `EnemyAudioCue` (arrival/repelled) posicional com `arrivalCueVolume`.
-- [ ] Silhueta (um `Part` azul/vermelho semitransparente na abertura da porta) via `EnemyVisual`.
-- [ ] Ducking: `enemy_arrival_*` abaixa o resto por 1.5s.
-- [ ] `lose(enemy)` → `Jumpscare{enemy}` → coreografia de 3s → tela de game over com `TENTAR DE NOVO` / `MENU`.
-- [ ] Blackout: `aiTickMultiplier` aplicado aos ticks.
-- [ ] `graceBeforeDawn`.
-- [ ] `Debug.logAI` imprime cada sorteio (`[square] d20=7 vs 3 → stay`).
-- [ ] `Debug.deterministicSeed` funciona.
+- [x] `PatrolAI` (5.7) instanciado duas vezes a partir de `GameConfig.Patrol`.
+- [x] Níveis lidos de `GameConfig.Nights[night]`.
+- [x] `EnemyAudioCue` (arrival/repelled) posicional com `arrivalCueVolume`.
+- [x] Silhueta (um `Part` azul/vermelho semitransparente na abertura da porta) via `EnemyVisual`.
+- [x] Ducking: `enemy_arrival_*` abaixa o resto por 1.5s.
+- [x] `lose(enemy)` → `Jumpscare{enemy}` → coreografia de 3s → tela de game over com `TENTAR DE NOVO` / `MENU`.
+- [x] Blackout: `aiTickMultiplier` aplicado aos ticks.
+- [x] `graceBeforeDawn`.
+- [x] `Debug.logAI` imprime cada sorteio (`[square] d20=7 vs 3 → stay`).
+- [x] `Debug.deterministicSeed` funciona.
 
 **Aceite:** Noite 1 (3/2/0/0) é vencível prestando atenção nos sons e fechando portas na hora; ignorar o som mata. Uma partida com seed fixa reproduz a mesma sequência de sorteios duas vezes. Um jumpscare de cada lado.
+
+> Status 18/09/2026: implementado; aceite no Studio pendente. Notas: as IAs enxergam a sessão pela interface `Types.AIHost` (sem require circular); o modelo do jumpscare é criado só no cliente; cues de chegada, rebate e jumpscare usam placeholders da biblioteca licenciada do Roblox (revisar na Fase 6). A silhueta e a luz fraca ficam na soleira, do lado do corredor.
 
 ### Fase 4 — Tablet e radar
 
@@ -1992,4 +1996,4 @@ Falas da Unidade de Assistência de Debug. As quatro primeiras são as originais
 
 ---
 
-*Fim do documento. Próxima ação: validar a Fase 2 no Studio (aceite da seção 6, incluindo o Device Emulator); depois, Fase 3.*
+*Fim do documento. Próxima ação: validar a Fase 3 no Studio (aceite da seção 6: Noite 1 com seed fixa e `Debug.logAI`); depois, Fase 4.*

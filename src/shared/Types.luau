@@ -7,6 +7,7 @@ export type Side = "left" | "right"
 export type Enemy = "square" | "triangle" | "circle" | "hexagon"
 export type PowerSource = "base" | "door_left" | "door_right" | "tablet" | "leak"
 export type Interact = "door_left" | "door_right" | "terminal" | "notebook" | "tablet"
+export type EnemyCue = "arrival" | "repelled" | "footstep"
 
 export type DoorState = { closed: boolean, jammed: boolean }
 
@@ -45,6 +46,17 @@ export type NightState = {
     ai: { [string]: any },
 }
 
+-- O que uma IA enxerga da sessão (5.7). Interface estrutural: as IAs não fazem require de NightSession
+-- (evitaria um ciclo) e ficam testáveis com um host falso.
+export type AIHost = {
+    rng: Random,
+    state: NightState,
+    fireCue: (self: AIHost, side: Side, cue: EnemyCue) -> (),
+    setEnemyVisual: (self: AIHost, side: Side, visible: boolean) -> (),
+    lose: (self: AIHost, enemy: Enemy) -> (),
+    inDawnGrace: (self: AIHost) -> boolean,
+}
+
 -- Dados persistidos por jogador (3.14)
 export type SaveData = {
     version: number,
@@ -75,6 +87,8 @@ export type NightPhasePayload = { phase: Phase }
 export type HourChangedPayload = { hour: number }
 export type PowerChangedPayload = { power: number, drainRate: number, sources: { PowerSource } }
 export type DoorStateChangedPayload = { side: Side, closed: boolean, jammed: boolean, accepted: boolean }
+export type EnemyAudioCuePayload = { side: Side, cue: EnemyCue, volume: number }
+export type EnemyVisualPayload = { side: Side, visible: boolean }
 export type BlackoutStartedPayload = { tabletBatterySeconds: number }
 export type NightWonPayload = { night: number, nextNight: number }
 export type JumpscarePayload = { enemy: Enemy }

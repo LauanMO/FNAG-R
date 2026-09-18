@@ -104,6 +104,7 @@ Enums.Office = table.freeze({
     Door = "Door",
     Button = "Button",
     SoundAnchor = "SoundAnchor",
+    Silhouette = "Silhouette",
     Lights = "Lights",
     WallClock = "WallClock",
     WallClockLabel = "Label",

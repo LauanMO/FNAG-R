@@ -84,6 +84,11 @@ local GameConfig = {
             door_open = "rbxassetid://9114153848", -- Door Slide Open Close 3
             door_jammed = "rbxassetid://9113085764", -- Alarm Buzzer 5
             blackout = "rbxassetid://9117871125", -- Power Down 1
+            enemy_arrival_left = "rbxassetid://9118240078", -- Robot Footsteps Large Metal Clunks Heavy 1
+            enemy_arrival_right = "rbxassetid://9118240078", -- idem (o lado vem da âncora posicional)
+            door_impact = "rbxassetid://9118270361", -- Robot Impact Metal Body Bangs Slams 1
+            jumpscare_square = "rbxassetid://9126160991", -- Video Static Distortion Short And Long Burst
+            jumpscare_triangle = "rbxassetid://9117060042", -- Nasa Static Burst 2
         } :: { [string]: string },
         arrivalDuckAmount = 0.6,
         arrivalDuckSeconds = 1.5,

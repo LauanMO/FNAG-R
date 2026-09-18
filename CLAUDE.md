@@ -14,8 +14,9 @@ Regras:
 - Se o design mudar, mude o PLANEJAMENTO primeiro e depois o código — nunca o contrário.
 
 ## Estado atual
-- Fases 0, 1 e 2 implementadas e validadas no Studio até a 1; aceite da Fase 2 (escritório 3D e portas) pendente.
-- Próxima: Fase 3 (inimigos físicos).
+- Fases 0 a 2 validadas no Studio. Fase 3 (inimigos físicos) implementada; aceite no Studio pendente.
+- Próxima: Fase 4 (tablet e radar).
+- As IAs recebem a sessão pela interface `Types.AIHost`; nunca fazem require de NightSession.
 - Sem personagem no jogo: clique em objetos 3D é raycast do InputController (atributo `Interact`), não ClickDetector.
 
 ## Ferramentas

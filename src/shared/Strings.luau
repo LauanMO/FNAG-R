@@ -56,12 +56,13 @@ Strings.EndScreens = table.freeze({
 })
 
 -- Nome dos inimigos nas telas de fim (B.7), indexado por Enums.Enemy
+-- cast justificado: indexado por Types.Enemy em runtime
 Strings.EnemyName = table.freeze({
     square = "QUADRADO AZUL",
     triangle = "TRIÂNGULO VERMELHO",
     circle = "CÍRCULO AMARELO",
     hexagon = "HEXÁGONO CIANO",
-})
+} :: { [string]: string })
 
 -- Relógio (B.4): 0 → "12:00 AM", 1..6 → "1:00 AM" .. "6:00 AM"
 function Strings.clock(hour: number): string

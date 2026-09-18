@@ -154,6 +154,14 @@ local function onNightWon(payload: Types.NightWonPayload)
     end)
 end
 
+-- 3.10: o jumpscare toma a tela; o HUD some e a sequência de amanhecer pendente (se houver) é cancelada
+local function onJumpscare()
+    dawnToken += 1
+    setPulse(false)
+    hud.message.Visible = false
+    setVisible(false)
+end
+
 function HudController.init()
     -- Botões de porta só em dispositivos de toque (5.11); no PC são as teclas A/D e os botões 3D
     setTouchButtonsVisible(InputController.isTouchDevice())
@@ -170,6 +178,7 @@ function HudController.init()
     Remotes.get(Enums.Remote.HourChanged).OnClientEvent:Connect(onHourChanged)
     Remotes.get(Enums.Remote.PowerChanged).OnClientEvent:Connect(onPowerChanged)
     Remotes.get(Enums.Remote.NightWon).OnClientEvent:Connect(onNightWon)
+    Remotes.get(Enums.Remote.Jumpscare).OnClientEvent:Connect(onJumpscare)
 end
 
 return HudController

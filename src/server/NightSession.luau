@@ -13,6 +13,7 @@ local Remotes = require(Shared.Remotes)
 local Signal = require(Shared.Signal)
 local Types = require(Shared.Types)
 local Scheduler = require(script.Parent.Scheduler)
+local PatrolAI = require(script.Parent.ai.PatrolAI)
 
 local NightSession = {}
 NightSession.__index = NightSession
@@ -26,6 +27,7 @@ type Fields = {
     -- ("won" | "lost", inimigo?) — NightService escuta para atualizar o save e destruir a sessão
     ended: Signal.Signal<Types.Phase, Types.Enemy?>,
     destroyed: boolean,
+    patrols: { PatrolAI.PatrolAI }, -- Quadrado e Triângulo, na ordem de registro
 }
 
 export type NightSession = typeof(setmetatable({} :: Fields, NightSession))
@@ -47,6 +49,15 @@ local function log(...: any)
     if GameConfig.Debug.logSession then
         print("[NightSession]", ...)
     end
+end
+
+-- Config da IA a partir do GameConfig.Patrol (tabela nova para o tipo literal de side virar Types.Side)
+local function patrolConfig(tickSeconds: number, side: Types.Side, path: { string }): PatrolAI.Config
+    return { tickSeconds = tickSeconds, side = side, path = path }
+end
+
+local function aiTaskName(ai: PatrolAI.PatrolAI): string
+    return "ai_" .. ai.name
 end
 
 local function isOver(phase: Types.Phase): boolean
@@ -92,9 +103,30 @@ function NightSession.new(players: { Player }, night: number): NightSession
             hourSeconds = GameConfig.Night.durationSeconds / GameConfig.Night.hours,
             ended = Signal.new(),
             destroyed = false,
+            patrols = {},
         } :: Fields,
         NightSession
     )
+
+    -- IAs físicas (3.8.1, 3.8.2): a mesma classe, dois parâmetros (2.6). Ordem fixa = sorteios reproduzíveis.
+    -- cast justificado: as IAs enxergam a sessão pela interface estrutural Types.AIHost (sem require circular)
+    local host = (self :: any) :: Types.AIHost
+    local P = GameConfig.Patrol
+    local square = PatrolAI.new(
+        host,
+        Enums.Enemy.Square,
+        patrolConfig(P.square.tickSeconds, P.square.side, P.square.path),
+        levels.square
+    )
+    local triangle = PatrolAI.new(
+        host,
+        Enums.Enemy.Triangle,
+        patrolConfig(P.triangle.tickSeconds, P.triangle.side, P.triangle.path),
+        levels.triangle
+    )
+    self.patrols = { square, triangle }
+    state.ai[Enums.Enemy.Square] = square
+    state.ai[Enums.Enemy.Triangle] = triangle
     return self
 end
 
@@ -173,6 +205,37 @@ function NightSession.beginRunning(self: NightSession)
     self.scheduler:every("power", GameConfig.Power.tickSeconds, function()
         self:tickPower()
     end)
+    for _, ai in self.patrols do
+        self.scheduler:every(aiTaskName(ai), ai.cfg.tickSeconds, function()
+            ai:tick()
+        end)
+    end
+end
+
+-- 3.5b: cue posicional de inimigo, com o volume da noite (7.4)
+function NightSession.fireCue(self: NightSession, side: Types.Side, cue: Types.EnemyCue)
+    self:fire(
+        Enums.Remote.EnemyAudioCue,
+        { side = side, cue = cue, volume = self.levels.arrivalCueVolume } :: Types.EnemyAudioCuePayload
+    )
+end
+
+function NightSession.setEnemyVisual(self: NightSession, side: Types.Side, visible: boolean)
+    self:fire(Enums.Remote.EnemyVisual, { side = side, visible = visible } :: Types.EnemyVisualPayload)
+end
+
+-- 3.1: nenhuma IA age nos últimos graceBeforeDawn segundos antes das 6
+function NightSession.inDawnGrace(self: NightSession): boolean
+    local s = self.state
+    local remaining = (GameConfig.Night.hours - s.hour) * self.hourSeconds - s.secondsIntoHour
+    return remaining <= GameConfig.Night.graceBeforeDawn
+end
+
+-- 3.9: no blackout os físicos "sentem o cheiro": ticks pela metade. scale = 1 restaura (reset generator, Fase 5).
+function NightSession.setAiTickScale(self: NightSession, scale: number)
+    for _, ai in self.patrols do
+        self.scheduler:setInterval(aiTaskName(ai), ai.cfg.tickSeconds * scale)
+    end
 end
 
 -- O relógio continua rodando no blackout: dá para ganhar na sorte (3.1)
@@ -212,6 +275,7 @@ function NightSession.enterBlackout(self: NightSession)
     end
     log("blackout")
     self:setPhase(Enums.Phase.Blackout)
+    self:setAiTickScale(GameConfig.Blackout.aiTickMultiplier)
     -- As portas perdem a trava magnética e abrem sozinhas
     s.doors.left.closed = false
     s.doors.right.closed = false
