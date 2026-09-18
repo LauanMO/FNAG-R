@@ -93,6 +93,39 @@ Enums.EnemyCue = table.freeze({
     Footstep = "footstep" :: "footstep",
 })
 
+-- Instâncias da sala whitebox (3.4): contrato entre OfficeBuilder (servidor) e os controllers (cliente)
+Enums.Office = table.freeze({
+    Model = "Office",
+    CameraAnchor = "CameraAnchor",
+    Doors = "Doors",
+    Corridors = "Corridors",
+    -- cast justificado: indexado por Types.Side em runtime
+    DoorModel = table.freeze({ left = "Left", right = "Right" } :: { [string]: string }),
+    Door = "Door",
+    Button = "Button",
+    SoundAnchor = "SoundAnchor",
+    Lights = "Lights",
+    WallClock = "WallClock",
+    WallClockLabel = "Label",
+})
+
+-- Atributos gravados nas partes da sala
+Enums.Attribute = table.freeze({
+    Side = "Side", -- "left" | "right" em Door e Button
+    OpenY = "OpenY", -- Y da porta aberta (dentro da parede)
+    ClosedY = "ClosedY", -- Y da porta fechada
+    Interact = "Interact", -- Enums.Interact nas partes clicáveis
+})
+
+-- O que um clique/toque em objeto da sala significa (5.11)
+Enums.Interact = table.freeze({
+    DoorLeft = "door_left" :: "door_left",
+    DoorRight = "door_right" :: "door_right",
+    Terminal = "terminal" :: "terminal",
+    Notebook = "notebook" :: "notebook",
+    Tablet = "tablet" :: "tablet",
+})
+
 -- Contrato completo de Remotes (5.6). Remotes.luau cria um RemoteEvent por nome.
 Enums.Remote = table.freeze({
     -- Cliente → Servidor (intenções)

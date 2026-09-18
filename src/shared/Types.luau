@@ -6,6 +6,7 @@ export type Phase = "boot" | "running" | "blackout" | "won" | "lost"
 export type Side = "left" | "right"
 export type Enemy = "square" | "triangle" | "circle" | "hexagon"
 export type PowerSource = "base" | "door_left" | "door_right" | "tablet" | "leak"
+export type Interact = "door_left" | "door_right" | "terminal" | "notebook" | "tablet"
 
 export type DoorState = { closed: boolean, jammed: boolean }
 
@@ -65,6 +66,7 @@ export type SaveData = {
 -- Payloads dos Remotes (5.6). O servidor valida tipo e faixa de tudo que recebe (5.9).
 -- Cliente → Servidor
 export type StartNightPayload = { night: number }
+export type ToggleDoorPayload = { side: Side }
 
 -- Servidor → Cliente
 export type SaveLoadedPayload = { save: SaveData }

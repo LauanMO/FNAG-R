@@ -32,6 +32,12 @@ local GameConfig = {
     Doors = {
         closeSeconds = 0.6,
         openSeconds = 0.8,
+        maxTogglesPerSecond = 10, -- rate limit de ToggleDoor por jogador (5.9)
+    },
+    Camera = {
+        maxYawDegrees = 60, -- arco de −60° a +60° (3.4)
+        smoothing = 10, -- quanto maior, mais rápido a câmera alcança o alvo
+        mouseDeadzone = 0.15, -- fração central da tela em que o mouse não gira a câmera
     },
     Radar = {
         pingProcessSeconds = 1.0,
@@ -71,10 +77,17 @@ local GameConfig = {
         [7] = { square = 16, triangle = 14, circle = 10, hexagon = 8, arrivalCueVolume = 0.5, sonar = true },
     },
     Audio = {
-        -- SoundId lógico (Enums.Cue) → asset id. Preencher na Fase 6.
-        ids = {} :: { [string]: string },
+        -- SoundId lógico (Enums.Cue) → asset id. A Fase 6 revisa todos; estes são placeholders da
+        -- biblioteca licenciada do Roblox (ProSoundEffects), escolhidos pelo nome, sem audição.
+        ids = {
+            door_close = "rbxassetid://9114153584", -- Door Slide Open Close 1
+            door_open = "rbxassetid://9114153848", -- Door Slide Open Close 3
+            door_jammed = "rbxassetid://9113085764", -- Alarm Buzzer 5
+            blackout = "rbxassetid://9117871125", -- Power Down 1
+        } :: { [string]: string },
         arrivalDuckAmount = 0.6,
         arrivalDuckSeconds = 1.5,
+        rollOffMaxDistance = 40, -- alcance dos sons posicionais, em studs (5.13)
     },
     Debug = {
         timeScale = 1, -- 5 = noite de 72s para testar. Só tem efeito em Studio (5.9).

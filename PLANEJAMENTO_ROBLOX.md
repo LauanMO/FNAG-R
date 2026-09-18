@@ -271,7 +271,7 @@ O importante: **segurar uma porta a noite toda agora mata**. No protótipo web (
 
 [ORIGINAL com ajustes de apresentação]
 
-- Duas portas: esquerda e direita. Cada uma tem um botão físico na parede ao lado (parte 3D clicável com `ClickDetector` ou `ProximityPrompt`; no mobile, também um botão no HUD).
+- Duas portas: esquerda e direita. Cada uma tem um botão físico na parede ao lado (parte 3D clicável; no mobile, também um botão no HUD). **Nota de implementação:** o jogo não carrega personagem (`CharacterAutoLoads = false`), e `ClickDetector`/`ProximityPrompt` exigem um personagem perto — por isso o clique/toque em objetos da sala é um raycast do `InputController` contra partes com o atributo `Interact`.
 - Clicar alterna aberta ↔ fechada. Fechar: a porta (uma `Part`) desce em 0.6s com som de servo pesado e um "clank" ao encostar. Abrir: sobe em 0.8s.
 - **Predição no cliente:** a porta começa a animar no mesmo frame do clique. O servidor confirma via `DoorStateChanged`. Se negar (porta travada pelo Hexágono, ou blackout), o cliente reverte com um som de "erro" e a porta treme.
 - **Porta travada (`door_left_jammed` / `door_right_jammed`):** o botão fica vermelho piscando, clicar produz um buzz curto e uma mensagem no HUD "MOTOR TRAVADO — ver manual". A porta **congela no estado em que estava** (se estava fechada, continua fechada e gastando energia; se estava aberta, fica aberta). Isso torna o jam mais perigoso quando a porta está aberta e mais caro quando está fechada — os dois casos são ruins de jeitos diferentes. [AJUSTE — no original só o botão era desabilitado; o comportamento com porta fechada não era definido.]
@@ -919,6 +919,8 @@ five-nights-at-geometry/
     │   ├── Main.server.luau         ← bootstrap: PlayerAdded → SaveService → menu
     │   ├── Scheduler.luau           ← relógio único (Heartbeat + acumuladores)
     │   ├── NightSession.luau        ← estado de uma noite + ciclo de vida
+    │   ├── OfficeBuilder.server.luau ← sala whitebox construída por código (3.4)
+    │   ├── RateLimiter.luau         ← janela de 1s por jogador (5.9)
     │   ├── NightService.luau        ← cria/destrói sessões; relógio; energia; blackout
     │   ├── SaveService.luau         ← DataStore
     │   ├── TerminalService.luau     ← valida e executa comandos
@@ -935,6 +937,7 @@ five-nights-at-geometry/
     │   ├── OfficeCamera.luau        ← câmera travada + arco de giro
     │   ├── HudController.luau       ← relógio, energia, firewall, sistemas, alertas
     │   ├── DoorController.luau      ← botões, predição, animação da porta
+    │   ├── OfficeController.luau    ← luzes (blackout, flicker) e relógio de parede
     │   ├── TabletController.luau    ← radar
     │   ├── TerminalController.luau  ← CLI + paleta + minigame + puzzle (subviews)
     │   ├── NotebookController.luau  ← manual
@@ -1015,6 +1018,12 @@ local GameConfig = {
     Doors = {
         closeSeconds = 0.6,
         openSeconds = 0.8,
+        maxTogglesPerSecond = 10,  -- rate limit (5.9)
+    },
+    Camera = {
+        maxYawDegrees = 60,     -- arco de −60° a +60° (3.4)
+        smoothing = 10,
+        mouseDeadzone = 0.15,
     },
     Radar = {
         pingProcessSeconds = 1.0,
@@ -1058,6 +1067,7 @@ local GameConfig = {
         ids = {},
         arrivalDuckAmount = 0.6,
         arrivalDuckSeconds = 1.5,
+        rollOffMaxDistance = 40, -- sons posicionais (5.13)
     },
     Debug = {
         timeScale = 1,          -- 5 = noite de 72s para testar
@@ -1443,17 +1453,19 @@ Cada fase termina em algo **jogável e testável** no Studio. Não avance sem o 
 
 **Arquivos:** `OfficeBuilder.server` (ou sala no Studio), `OfficeCamera`, `DoorController`, `InputController`, `AudioController` (mínimo: portas), `Strings`.
 
-- [ ] Sala whitebox: chão, teto, 4 paredes, duas aberturas de porta, mesa, monitor, caderno, tablet, dois botões de parede, duas luzes, corredores escuros.
-- [ ] Câmera travada com arco de −60° a +60°, suavizada, mouse e touch.
-- [ ] Portas: `Part` que desce/sobe com `TweenService`; `ToggleDoor` com predição e reversão.
-- [ ] Custo de porta na energia (`drainPerDoor`).
-- [ ] Botões de parede (`ClickDetector`) + botões HUD mobile + teclas `A`/`D`.
-- [ ] Sons: `door_close`, `door_open`, `door_jammed`, `blackout` (posicionais).
-- [ ] Blackout visual: luzes com fade, portas sobem sozinhas, botões travam.
-- [ ] HUD: aviso de energia baixa (âmbar/vermelho), flicker das luzes < 10%.
+- [x] Sala whitebox: chão, teto, 4 paredes, duas aberturas de porta, mesa, monitor, caderno, tablet, dois botões de parede, duas luzes, corredores escuros. (`OfficeBuilder.server.luau`; iluminação escura versionada no `default.project.json`)
+- [x] Câmera travada com arco de −60° a +60°, suavizada, mouse (posição do cursor, com zona morta), touch (arrasto) e stick direito.
+- [x] Portas: `Part` que desce/sobe com `TweenService`; `ToggleDoor` com predição e reversão.
+- [x] Custo de porta na energia (`drainPerDoor`).
+- [x] Botões de parede (raycast em partes com atributo `Interact`, ver 3.3) + botões HUD mobile + teclas `A`/`D` + LB/RB.
+- [x] Sons: `door_close`, `door_open`, `door_jammed`, `blackout` (posicionais) — `AudioController` com grupos e âncoras; assets placeholder da biblioteca licenciada do Roblox, a revisar na Fase 6.
+- [x] Blackout visual: luzes com fade, portas sobem sozinhas, botões travam.
+- [x] HUD: aviso de energia baixa (âmbar pulsando / vermelho), flicker das luzes < 10%.
 - [ ] `Device Emulator` iPhone SE: tudo alcançável com o polegar.
 
 **Aceite:** dá para morrer de blackout segurando as duas portas (às ~3:12 AM). Dá para ganhar não fazendo nada. A porta reage no mesmo frame do clique. No celular, dá para jogar com uma mão.
+
+> Status 18/09/2026: implementado; aceite no Studio e teste no Device Emulator (iPhone SE) pendentes. Sem inimigos ainda, o blackout às ~3:12 AM não mata: as portas sobem, as luzes apagam e a noite continua até as 6 (3.1).
 
 ### Fase 3 — Inimigos físicos
 
@@ -1978,4 +1990,4 @@ Falas da Unidade de Assistência de Debug. As quatro primeiras são as originais
 
 ---
 
-*Fim do documento. Próxima ação: validar as Fases 0 e 1 no Studio (aceites da seção 6); depois, Fase 2.*
+*Fim do documento. Próxima ação: validar a Fase 2 no Studio (aceite da seção 6, incluindo o Device Emulator); depois, Fase 3.*

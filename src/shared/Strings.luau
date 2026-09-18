@@ -40,6 +40,8 @@ Strings.HUD = table.freeze({
     blackout = "BLACKOUT",
     blackoutBattery = "BLACKOUT — bateria do tablet: %ds",
     tabletOffline = "TABLET OFFLINE — fix camera",
+    doorLeftButton = "◀ PORTA",
+    doorRightButton = "PORTA ▶",
 })
 
 -- B.7

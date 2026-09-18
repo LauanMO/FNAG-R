@@ -242,6 +242,29 @@ function NightSession.enterBlackout(self: NightSession)
     )
 end
 
+-- 3.3 / 5.8: alterna a porta. Nega fora de "running" (boot, blackout) ou com a porta travada pelo Hexágono.
+-- A resposta sempre carrega o estado completo da porta; accepted=false manda o cliente reverter a predição.
+function NightSession.toggleDoor(self: NightSession, side: Types.Side)
+    local s = self.state
+    local door = if side == Enums.Side.Left then s.doors.left else s.doors.right
+    local accepted = s.phase == Enums.Phase.Running and not door.jammed
+    if accepted then
+        door.closed = not door.closed
+    end
+    self:fire(
+        Enums.Remote.DoorStateChanged,
+        {
+            side = side,
+            closed = door.closed,
+            jammed = door.jammed,
+            accepted = accepted,
+        } :: Types.DoorStateChangedPayload
+    )
+    if accepted then
+        self:firePower() -- o dreno mudou; as barrinhas do HUD refletem na hora (3.2)
+    end
+end
+
 function NightSession.win(self: NightSession)
     local s = self.state
     if isOver(s.phase) then

@@ -14,8 +14,9 @@ Regras:
 - Se o design mudar, mude o PLANEJAMENTO primeiro e depois o código — nunca o contrário.
 
 ## Estado atual
-- Fase 0 (setup) e Fase 1 (esqueleto e loop da noite) implementadas; critério de aceite no Studio pendente.
-- Próxima: Fase 2 (escritório 3D e portas).
+- Fases 0, 1 e 2 implementadas e validadas no Studio até a 1; aceite da Fase 2 (escritório 3D e portas) pendente.
+- Próxima: Fase 3 (inimigos físicos).
+- Sem personagem no jogo: clique em objetos 3D é raycast do InputController (atributo `Interact`), não ClickDetector.
 
 ## Ferramentas
 - Toolchain via Rokit (`rokit.toml`): rojo, selene, stylua. `rokit install` na raiz.

@@ -11,6 +11,7 @@ local Enums = require(Shared.Enums)
 local Remotes = require(Shared.Remotes)
 local Types = require(Shared.Types)
 local NightSession = require(script.Parent.NightSession)
+local RateLimiter = require(script.Parent.RateLimiter)
 
 local SAVE_VERSION = 1
 
@@ -18,6 +19,7 @@ local NightService = {}
 
 local sessions: { [Player]: NightSession.NightSession } = {}
 local saves: { [Player]: Types.SaveData } = {}
+local toggleDoorLimiter = RateLimiter.new(GameConfig.Doors.maxTogglesPerSecond)
 
 local function log(...: any)
     if GameConfig.Debug.logSession then
@@ -115,6 +117,26 @@ local function onStartNight(player: Player, payload: unknown)
     session:start()
 end
 
+-- ToggleDoor { side }: só com sessão viva, lado válido e dentro do rate limit (5.9)
+local function onToggleDoor(player: Player, payload: unknown)
+    local session = sessions[player]
+    if not session then
+        return
+    end
+    if typeof(payload) ~= "table" then
+        return
+    end
+    -- cast justificado: o payload vem do cliente e é validado campo a campo
+    local side = (payload :: any).side
+    if side ~= Enums.Side.Left and side ~= Enums.Side.Right then
+        return
+    end
+    if not toggleDoorLimiter:allow(player) then
+        return
+    end
+    session:toggleDoor(side)
+end
+
 local function onPlayerAdded(player: Player)
     saves[player] = defaultSave()
     sendSave(player)
@@ -123,6 +145,7 @@ end
 local function onPlayerRemoving(player: Player)
     endSession(player)
     saves[player] = nil
+    toggleDoorLimiter:forget(player)
 end
 
 function NightService.init()
@@ -137,6 +160,7 @@ function NightService.init()
         sendSave(player)
     end)
     Remotes.get(Enums.Remote.StartNight).OnServerEvent:Connect(onStartNight)
+    Remotes.get(Enums.Remote.ToggleDoor).OnServerEvent:Connect(onToggleDoor)
     Remotes.get(Enums.Remote.ReturnToMenu).OnServerEvent:Connect(function(player: Player)
         endSession(player)
     end)

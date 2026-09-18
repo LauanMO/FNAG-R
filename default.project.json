@@ -1,22 +1,60 @@
 {
   "name": "FiveNightsAtGeometry",
-  "globIgnorePaths": ["**/.gitkeep"],
+  "globIgnorePaths": [
+    "**/.gitkeep"
+  ],
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
-      "Shared": { "$path": "src/shared" }
+      "Shared": {
+        "$path": "src/shared"
+      }
     },
     "ServerScriptService": {
-      "Server": { "$path": "src/server" }
+      "Server": {
+        "$path": "src/server"
+      }
     },
     "StarterPlayer": {
       "StarterPlayerScripts": {
-        "Client": { "$path": "src/client" }
+        "Client": {
+          "$path": "src/client"
+        }
       }
     },
-    "StarterGui": { "$path": "src/ui" },
+    "StarterGui": {
+      "$path": "src/ui"
+    },
     "Players": {
-      "$properties": { "CharacterAutoLoads": false }
+      "$properties": {
+        "CharacterAutoLoads": false
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "Ambient": [
+          0.03,
+          0.03,
+          0.04
+        ],
+        "OutdoorAmbient": [
+          0.02,
+          0.02,
+          0.03
+        ],
+        "Brightness": 0,
+        "ClockTime": 0,
+        "GlobalShadows": true,
+        "EnvironmentDiffuseScale": 0,
+        "EnvironmentSpecularScale": 0,
+        "FogColor": [
+          0,
+          0,
+          0
+        ],
+        "FogStart": 20,
+        "FogEnd": 70
+      }
     }
   }
 }
