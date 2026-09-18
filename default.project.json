@@ -1,0 +1,22 @@
+{
+  "name": "FiveNightsAtGeometry",
+  "globIgnorePaths": ["**/.gitkeep"],
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Shared": { "$path": "src/shared" }
+    },
+    "ServerScriptService": {
+      "Server": { "$path": "src/server" }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Client": { "$path": "src/client" }
+      }
+    },
+    "StarterGui": { "$path": "src/ui" },
+    "Players": {
+      "$properties": { "CharacterAutoLoads": false }
+    }
+  }
+}

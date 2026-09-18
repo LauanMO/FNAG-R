@@ -1,0 +1,16 @@
+# Rojo
+sourcemap.json
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+
+# selene (gera roblox.yml/roblox.toml a partir de std = "roblox")
+roblox.yml
+roblox.toml
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
