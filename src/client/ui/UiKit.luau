@@ -61,7 +61,9 @@ local function applyBox(inst: GuiObject, props: Props)
     inst.Parent = props.parent
 end
 
-local function applyText(inst: TextLabel | TextButton, props: Props)
+-- inst: any justificado — TextLabel e TextButton têm as mesmas propriedades de texto, mas nenhuma
+-- classe base comum que as declare; o Luau não permite escrever propriedades numa união de classes.
+local function applyText(inst: any, props: Props)
     inst.Font = UiKit.Font
     inst.Text = props.text or ""
     inst.TextColor3 = props.color or UiKit.Color.text

@@ -138,11 +138,14 @@ end
 
 function NightSession.firePower(self: NightSession)
     local rate, sources = self:computeDrain()
-    self:fire(Enums.Remote.PowerChanged, {
-        power = self.state.power,
-        drainRate = rate,
-        sources = sources,
-    } :: Types.PowerChangedPayload)
+    self:fire(
+        Enums.Remote.PowerChanged,
+        {
+            power = self.state.power,
+            drainRate = rate,
+            sources = sources,
+        } :: Types.PowerChangedPayload
+    )
 end
 
 function NightSession.start(self: NightSession)
@@ -212,22 +215,31 @@ function NightSession.enterBlackout(self: NightSession)
     -- As portas perdem a trava magnética e abrem sozinhas
     s.doors.left.closed = false
     s.doors.right.closed = false
-    self:fire(Enums.Remote.DoorStateChanged, {
-        side = Enums.Side.Left,
-        closed = false,
-        jammed = s.doors.left.jammed,
-        accepted = true,
-    } :: Types.DoorStateChangedPayload)
-    self:fire(Enums.Remote.DoorStateChanged, {
-        side = Enums.Side.Right,
-        closed = false,
-        jammed = s.doors.right.jammed,
-        accepted = true,
-    } :: Types.DoorStateChangedPayload)
+    self:fire(
+        Enums.Remote.DoorStateChanged,
+        {
+            side = Enums.Side.Left,
+            closed = false,
+            jammed = s.doors.left.jammed,
+            accepted = true,
+        } :: Types.DoorStateChangedPayload
+    )
+    self:fire(
+        Enums.Remote.DoorStateChanged,
+        {
+            side = Enums.Side.Right,
+            closed = false,
+            jammed = s.doors.right.jammed,
+            accepted = true,
+        } :: Types.DoorStateChangedPayload
+    )
     s.tabletBatteryRemaining = GameConfig.Blackout.tabletBatterySeconds
-    self:fire(Enums.Remote.BlackoutStarted, {
-        tabletBatterySeconds = GameConfig.Blackout.tabletBatterySeconds,
-    } :: Types.BlackoutStartedPayload)
+    self:fire(
+        Enums.Remote.BlackoutStarted,
+        {
+            tabletBatterySeconds = GameConfig.Blackout.tabletBatterySeconds,
+        } :: Types.BlackoutStartedPayload
+    )
 end
 
 function NightSession.win(self: NightSession)

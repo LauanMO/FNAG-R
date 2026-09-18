@@ -85,15 +85,17 @@ local GameConfig = {
 }
 
 -- Congela recursivamente: ninguém altera config em runtime; balancear é editar este arquivo.
-local function deepFreeze<T>(value: T): T
-    -- cast justificado: percorre qualquer tabela genericamente para congelar as sub-tabelas
-    local t = value :: any
+-- t: any justificado — percorre qualquer sub-tabela genericamente. O congelamento é in-place,
+-- então o módulo devolve a própria GameConfig e quem a importa mantém o tipo preciso de cada campo.
+local function deepFreeze(t: any)
     for _, child in t do
         if typeof(child) == "table" and not table.isfrozen(child) then
             deepFreeze(child)
         end
     end
-    return table.freeze(t) :: T
+    table.freeze(t)
 end
 
-return deepFreeze(GameConfig)
+deepFreeze(GameConfig)
+
+return GameConfig
