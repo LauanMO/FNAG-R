@@ -983,6 +983,8 @@ five-nights-at-geometry/
 
 A sala 3D whitebox pode ser construída no Studio e salva; o Rojo não precisa gerenciá-la na v1. Alternativa: um `OfficeBuilder.server.luau` que cria as `Part`s por código — recomendado para a Fase 2 porque deixa a sala versionada e reproduzível.
 
+**Streaming:** places novos vêm com `Workspace.StreamingEnabled = true`, e nesse modo as peças só replicam perto do personagem. Como o jogo não tem personagem, todos os modelos da sala são criados com `ModelStreamingMode = Persistent`; sem isso o cliente espera a sala para sempre (tela preta). Qualquer modelo novo que o cliente precise ler (silhuetas da Fase 3, modelos de jumpscare) segue a mesma regra.
+
 ### 5.2 `GameConfig` — schema
 
 O arquivo é uma tabela Luau congelada (`table.freeze`). Valores na seção 7. Estrutura:

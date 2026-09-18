@@ -75,6 +75,16 @@ local function invisible(p: Part): Part
     return p
 end
 
+-- Com StreamingEnabled (padrão em places novos), peças só chegam ao cliente perto do personagem.
+-- Este jogo não tem personagem, então sem isto a sala nunca replica e o cliente trava esperando por ela.
+-- Persistent envia o modelo inteiro logo na entrada do jogador e nunca o descarrega. A sala é pequena.
+local function persistentModel(name: string): Model
+    local model = Instance.new("Model")
+    model.Name = name
+    model.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
+    return model
+end
+
 local function buildShell(parent: Instance)
     local outerW = 2 * (ROOM_HALF_W + WALL_T)
     local outerD = 2 * (ROOM_HALF_D + WALL_T)
@@ -135,8 +145,7 @@ end
 
 local function buildDoor(parent: Instance, side: string)
     local sign = if side == Enums.Side.Left then -1 else 1
-    local model = Instance.new("Model")
-    model.Name = Enums.Office.DoorModel[side]
+    local model = persistentModel(Enums.Office.DoorModel[side])
 
     local wallX = sign * (ROOM_HALF_W + WALL_T / 2)
     local doorZ = (DOOR_Z_MIN + DOOR_Z_MAX) / 2
@@ -187,8 +196,7 @@ end
 
 local function buildCorridor(parent: Instance, side: string)
     local sign = if side == Enums.Side.Left then -1 else 1
-    local model = Instance.new("Model")
-    model.Name = Enums.Office.DoorModel[side]
+    local model = persistentModel(Enums.Office.DoorModel[side])
 
     local zc = (DOOR_Z_MIN + DOOR_Z_MAX) / 2
     local innerW = DOOR_Z_MAX - DOOR_Z_MIN
@@ -342,8 +350,7 @@ local function build()
     if existing then
         existing:Destroy()
     end
-    local office = Instance.new("Model")
-    office.Name = Enums.Office.Model
+    local office = persistentModel(Enums.Office.Model)
 
     buildShell(office)
     buildDesk(office)
