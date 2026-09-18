@@ -22,6 +22,7 @@ export type Hud = {
     bootOverlay: Frame,
     doorLeftButton: TextButton,
     doorRightButton: TextButton,
+    tabletButton: TextButton,
 }
 
 -- Botões de porta para toque (5.11): cantos inferiores, ≥ 56 px no iPhone SE (0.17 × 375 ≈ 64 px)
@@ -157,6 +158,20 @@ function HudGui.build(parent: Instance): Hud
         maxTextSize = 28,
     })
 
+    local tabletButton = UiKit.button({
+        name = "TabletButton",
+        parent = gui,
+        position = UDim2.fromScale(0.5, DOOR_BUTTON_Y),
+        anchor = Vector2.new(0.5, 0),
+        size = UDim2.fromScale(0.24, 0.17),
+        bg = C.panel,
+        border = true,
+        text = Strings.Tablet.hudButton,
+        color = C.hacker,
+        visible = false,
+        maxTextSize = 28,
+    })
+
     overlay.Parent = parent
     gui.Parent = parent
 
@@ -173,6 +188,7 @@ function HudGui.build(parent: Instance): Hud
         bootOverlay = bootOverlay,
         doorLeftButton = doorLeftButton,
         doorRightButton = doorRightButton,
+        tabletButton = tabletButton,
     }
 end
 

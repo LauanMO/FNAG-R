@@ -53,6 +53,29 @@ Enums.Node = table.freeze({
     Office = "OFFICE",
 })
 
+-- Ordem fixa dos nós para varreduras (radar) e listas
+Enums.NodeList = table.freeze({
+    Enums.Node.CAM1,
+    Enums.Node.CAM2,
+    Enums.Node.CAM3,
+    Enums.Node.CAM4,
+    Enums.Node.DoorLeft,
+    Enums.Node.DoorRight,
+    Enums.Node.Office,
+})
+
+-- Estado de um nó no PingResult (3.5c)
+Enums.NodeState = table.freeze({
+    Clear = "clear" :: "clear",
+    Anomaly = "anomaly" :: "anomaly",
+    Dead = "dead" :: "dead",
+})
+
+Enums.ServerStatus = table.freeze({
+    Ok = "ok" :: "ok",
+    Anomalous = "anomalous" :: "anomalous",
+})
+
 -- Cues de áudio (3.11). O asset real de cada um fica em GameConfig.Audio.ids.
 Enums.Cue = table.freeze({
     AmbientHum = "ambient_hum",

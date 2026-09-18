@@ -938,7 +938,7 @@ five-nights-at-geometry/
     │   ├── HudController.luau       ← relógio, energia, firewall, sistemas, alertas
     │   ├── DoorController.luau      ← botões, predição, animação da porta
     │   ├── OfficeController.luau    ← luzes (blackout, flicker) e relógio de parede
-    │   ├── TabletController.luau    ← radar
+    │   ├── TabletController.luau    ← radar (TabletGui em client/ui)
     │   ├── TerminalController.luau  ← CLI + paleta + minigame + puzzle (subviews)
     │   ├── NotebookController.luau  ← manual
     │   ├── AudioController.luau     ← todos os sons, ducking, posicional
@@ -1015,6 +1015,7 @@ local GameConfig = {
     Blackout = {
         lightsFadeSeconds = 3,
         tabletBatterySeconds = 15,
+        batteryTickSeconds = 1, -- resolução do contador da bateria
         aiTickMultiplier = 0.5,
     },
     Doors = {
@@ -1026,6 +1027,9 @@ local GameConfig = {
         maxYawDegrees = 60,     -- arco de −60° a +60° (3.4)
         smoothing = 10,
         mouseDeadzone = 0.15,
+    },
+    Tablet = {
+        maxTogglesPerSecond = 10,  -- rate limit de SetTabletOpen (5.9)
     },
     Radar = {
         pingProcessSeconds = 1.0,
@@ -1076,6 +1080,7 @@ local GameConfig = {
         deterministicSeed = nil, -- número = RNG reproduzível
         logAI = false,
         logSession = true,      -- imprime boot, fases e fim de noite no Output
+        deadCamerasAtStart = {}, -- ex.: { "CAM1" } para testar "em nó cego" (Fase 4). Só em Studio.
     },
 }
 return table.freeze(GameConfig)  -- na prática, congelamento recursivo (deepFreeze)
@@ -1384,10 +1389,12 @@ Cliente: TerminalEcho → appenda linha, scroll; TerminalPalette → refaz botõ
 | Tablet | clique no tablet ou `Space` | botão HUD central inferior | Y |
 | Terminal | clique no monitor ou `T` | botão HUD | X |
 | Manual | clique no caderno ou `M` | botão HUD | B |
-| Fechar overlay | `Esc` | botão FECHAR | B |
+| Fechar overlay | mesma tecla que abriu (`Space`, `T`, `M`) | botão FECHAR | B |
 | Terminal: enviar | `Enter` | botão ENVIAR | A |
 | Terminal: paleta | clique / `Tab` cicla | toque | D-pad |
 | Minigame / puzzle | clique | toque (alvos ≥ 48px) | D-pad + A |
+
+**Esc:** o Roblox reserva a tecla `Esc` para o próprio menu e ela não chega aos scripts do jogo. Por isso overlays fecham com a mesma tecla que os abriu ou com o botão FECHAR.
 
 **Regras de UI mobile:** todo alvo de toque ≥ 48×48 px em escala (`UIScale` por resolução). O HUD usa `Scale`, nunca `Offset`, para posição. Testar em `Device Emulator` com iPhone SE (menor tela comum) antes de fechar cada fase.
 
@@ -1494,16 +1501,18 @@ Cada fase termina em algo **jogável e testável** no Studio. Não avance sem o 
 
 **Arquivos:** `RadarService`, `TabletController`, `TabletGui`.
 
-- [ ] Tablet abre/fecha (clique, `Space`, HUD). Custo `drainTablet`.
-- [ ] Botões de porta somem com o tablet aberto; cues de som continuam.
-- [ ] Mapa com CAM1-4, DOOR L/R, ESCRITÓRIO. Estática animada de fundo.
-- [ ] Ping: `RequestPing` → 1s → `PingResult` → 6s → cooldown 3s. Sons.
-- [ ] `PingResult` pinta nós (`clear`/`anomaly`/`dead`), status com contagem e "em nó cego".
-- [ ] Rodapé com firewall e energia.
-- [ ] `camera_offline` bloqueia o tablet (só o estado; o Hexágono vem na Fase 5).
-- [ ] Blackout: bateria de 15s, contador visível, `TabletBatteryDead` desliga.
+- [x] Tablet abre/fecha (clique no tablet da mesa, `Space`, botão TABLET no HUD de toque, Y no gamepad). Custo `drainTablet`.
+- [x] Botões de porta somem com o tablet aberto (e A/D ficam inertes); cues de som continuam.
+- [x] Mapa com CAM1-4, DOOR L/R, ESCRITÓRIO. Estática animada de fundo (linha de varredura).
+- [x] Ping: `RequestPing` → 1s → `PingResult` → 6s → cooldown 3s. Sons (placeholders licenciados).
+- [x] `PingResult` pinta nós (`clear`/`anomaly`/`dead`), status com contagem e "em nó cego". `Debug.logAI` também imprime cada ping.
+- [x] Rodapé com firewall e energia.
+- [x] `camera_offline` bloqueia o tablet (só o estado; o Hexágono vem na Fase 5).
+- [x] Blackout: bateria de 15s, contador visível no tablet e no HUD, `TabletBatteryDead` desliga.
 
 **Aceite:** com `Debug.logAI`, o ping mostra exatamente onde as IAs estão no instante da resolução. Um nó `dead` (forçado via debug) ainda conta em "em nó cego". Deixar o tablet aberto a noite inteira termina com ~28%.
+
+> Status 18/09/2026: implementado; aceite no Studio pendente. O "debug para matar uma câmera" é `Debug.deadCamerasAtStart`; `RadarService.killNextCamera` já existe para o Círculo (Fase 5b).
 
 ### Fase 5 — Inimigos hackers, terminal, manual, puzzle
 
@@ -1996,4 +2005,4 @@ Falas da Unidade de Assistência de Debug. As quatro primeiras são as originais
 
 ---
 
-*Fim do documento. Próxima ação: validar a Fase 3 no Studio (aceite da seção 6: Noite 1 com seed fixa e `Debug.logAI`); depois, Fase 4.*
+*Fim do documento. Próxima ação: validar a Fase 4 no Studio (aceite da seção 6); depois, Fase 5a.*

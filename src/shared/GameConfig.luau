@@ -27,6 +27,7 @@ local GameConfig = {
     Blackout = {
         lightsFadeSeconds = 3,
         tabletBatterySeconds = 15,
+        batteryTickSeconds = 1, -- resolução do contador da bateria
         aiTickMultiplier = 0.5,
     },
     Doors = {
@@ -38,6 +39,9 @@ local GameConfig = {
         maxYawDegrees = 60, -- arco de −60° a +60° (3.4)
         smoothing = 10, -- quanto maior, mais rápido a câmera alcança o alvo
         mouseDeadzone = 0.15, -- fração central da tela em que o mouse não gira a câmera
+    },
+    Tablet = {
+        maxTogglesPerSecond = 10, -- rate limit de SetTabletOpen por jogador (5.9)
     },
     Radar = {
         pingProcessSeconds = 1.0,
@@ -89,16 +93,21 @@ local GameConfig = {
             door_impact = "rbxassetid://9118270361", -- Robot Impact Metal Body Bangs Slams 1
             jumpscare_square = "rbxassetid://9126160991", -- Video Static Distortion Short And Long Burst
             jumpscare_triangle = "rbxassetid://9117060042", -- Nasa Static Burst 2
+            tablet_open = "rbxassetid://15675059323", -- Roblox_UI_Bright_Click (oficial)
+            tablet_close = "rbxassetid://15675032796", -- Roblox_UI_Small_Click (oficial)
+            ping_send = "rbxassetid://9125981410", -- Spaceship Sonar Low And High Pitch Tonal
+            ping_result = "rbxassetid://9117060349", -- Nasa Transmission Beep 2
         } :: { [string]: string },
         arrivalDuckAmount = 0.6,
         arrivalDuckSeconds = 1.5,
         rollOffMaxDistance = 40, -- alcance dos sons posicionais, em studs (5.13)
     },
     Debug = {
-        timeScale = 1, -- 5 = noite de 72s para testar. Só tem efeito em Studio (5.9).
+        timeScale = 5, -- 5 = noite de 72s para testar. Só tem efeito em Studio (5.9).
         deterministicSeed = nil :: number?, -- número = RNG reproduzível. Só em Studio.
         logAI = false, -- imprime cada sorteio das IAs (Fase 3)
         logSession = true, -- imprime boot, fases e fim de noite no Output
+        deadCamerasAtStart = {} :: { string }, -- ex.: { "CAM1" } para testar "em nó cego". Só em Studio.
     },
 }
 

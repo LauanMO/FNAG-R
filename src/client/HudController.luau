@@ -39,6 +39,8 @@ local dawn = DawnGui.build(playerGui)
 local dawnToken = 0 -- invalida uma sequência de amanhecer pendente
 local messageToken = 0
 local pulseTween: Tween? = nil
+local touchMode = false
+local tabletOpen = false
 
 local function setVisible(visible: boolean)
     hud.gui.Enabled = visible
@@ -64,9 +66,16 @@ local function setDoorButtonsEnabled(enabled: boolean)
     UiKit.setEnabled(hud.doorRightButton, enabled)
 end
 
+-- Botões de toque (5.11). Com o tablet aberto os de porta somem (3.5); o de tablet fica para fechar.
+local function applyTouchButtons()
+    hud.doorLeftButton.Visible = touchMode and not tabletOpen
+    hud.doorRightButton.Visible = touchMode and not tabletOpen
+    hud.tabletButton.Visible = touchMode
+end
+
 local function setTouchButtonsVisible(visible: boolean)
-    hud.doorLeftButton.Visible = visible
-    hud.doorRightButton.Visible = visible
+    touchMode = visible
+    applyTouchButtons()
 end
 
 local function updatePower(power: number, sources: { Types.PowerSource })
@@ -102,6 +111,7 @@ local function onNightStarted(payload: Types.NightStartedPayload)
     hud.night.Text = Strings.nightLabel(payload.night)
     hud.clock.Text = Strings.clock(0)
     hud.blackout.Visible = false
+    hud.blackout.Text = Strings.HUD.blackout
     hud.message.Visible = false
     hud.bootOverlay.Visible = true
     setDoorButtonsEnabled(true)
@@ -154,6 +164,24 @@ local function onNightWon(payload: Types.NightWonPayload)
     end)
 end
 
+local function onTabletState(payload: Types.TabletStatePayload)
+    tabletOpen = payload.open
+    applyTouchButtons()
+    -- B.4: no blackout, o aviso mostra a bateria do tablet até ela zerar
+    local remaining = payload.batteryRemaining
+    if hud.blackout.Visible and remaining ~= nil then
+        hud.blackout.Text = if remaining > 0
+            then string.format(Strings.HUD.blackoutBattery, math.floor(remaining))
+            else Strings.HUD.blackout
+    end
+end
+
+local function onCameraDead(payload: Types.CameraDeadPayload)
+    HudController.showMessage(
+        string.format(Strings.HUD.cameraDead, Strings.NodeShort[payload.camera] or payload.camera)
+    )
+end
+
 -- 3.10: o jumpscare toma a tela; o HUD some e a sequência de amanhecer pendente (se houver) é cancelada
 local function onJumpscare()
     dawnToken += 1
@@ -172,6 +200,9 @@ function HudController.init()
     hud.doorRightButton.Activated:Connect(function()
         InputController.doorToggle:Fire(Enums.Side.Right)
     end)
+    hud.tabletButton.Activated:Connect(function()
+        InputController.tabletToggle:Fire()
+    end)
 
     Remotes.get(Enums.Remote.NightStarted).OnClientEvent:Connect(onNightStarted)
     Remotes.get(Enums.Remote.NightPhase).OnClientEvent:Connect(onNightPhase)
@@ -179,6 +210,8 @@ function HudController.init()
     Remotes.get(Enums.Remote.PowerChanged).OnClientEvent:Connect(onPowerChanged)
     Remotes.get(Enums.Remote.NightWon).OnClientEvent:Connect(onNightWon)
     Remotes.get(Enums.Remote.Jumpscare).OnClientEvent:Connect(onJumpscare)
+    Remotes.get(Enums.Remote.TabletState).OnClientEvent:Connect(onTabletState)
+    Remotes.get(Enums.Remote.CameraDead).OnClientEvent:Connect(onCameraDead)
 end
 
 return HudController

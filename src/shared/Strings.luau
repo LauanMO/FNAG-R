@@ -36,7 +36,7 @@ Strings.HUD = table.freeze({
     doorJammed = "MOTOR TRAVADO — ver manual",
     generatorAvailable = "GERADOR: %d uso",
     generatorUsed = "GERADOR: usado",
-    cameraDead = "NODE CAM %s DESTRUÍDO",
+    cameraDead = "NODE %s DESTRUÍDO",
     blackout = "BLACKOUT",
     blackoutBattery = "BLACKOUT — bateria do tablet: %ds",
     tabletOffline = "TABLET OFFLINE — fix camera",
@@ -64,6 +64,47 @@ Strings.EnemyName = table.freeze({
     hexagon = "HEXÁGONO CIANO",
 } :: { [string]: string })
 
+-- B.5
+Strings.Tablet = table.freeze({
+    title = "GLOBAL SECURITY NODE MAP v2.4",
+    pingButton = "▶ EMITIR PING RADAR GLOBAL",
+    close = "FECHAR",
+    hudButton = "TABLET",
+    statusIdle = "SISTEMA EM ESPERA...",
+    statusSending = "ENVIANDO PING RADAR PARA TODOS OS NODES...",
+    statusResult = "SCAN COMPLETO. %d ANOMALIA(S).",
+    statusResultBlind = "SCAN COMPLETO. %d ANOMALIA(S) (%d EM NÓ CEGO).",
+    statusClear = "SCAN COMPLETO. NENHUMA ANOMALIA VISÍVEL.",
+    statusLost = "SINAL PERDIDO. RECOMENDA-SE NOVO PING.",
+    anomaly = "ANOMALIA",
+    dead = "DEAD",
+    anomalousTraffic = "TRÁFEGO ANÔMALO",
+    footerFirewall = "FIREWALL: %s",
+    footerPower = "⚡ %d%%",
+})
+
+-- Nomes dos nós no mapa (B.5). cast justificado: indexado por Enums.Node em runtime
+Strings.NodeName = table.freeze({
+    CAM1 = "CAM 1 — PALCO",
+    CAM2 = "CAM 2 — CORR. ESQ",
+    CAM3 = "CAM 3 — CORR. DIR",
+    CAM4 = "CAM 4 — SERVIDORES",
+    DOOR_L = "DOOR L",
+    DOOR_R = "DOOR R",
+    OFFICE = "ESCRITÓRIO",
+} :: { [string]: string })
+
+-- Nome curto para mensagens do HUD ("NODE CAM 1 DESTRUÍDO")
+Strings.NodeShort = table.freeze({
+    CAM1 = "CAM 1",
+    CAM2 = "CAM 2",
+    CAM3 = "CAM 3",
+    CAM4 = "CAM 4",
+    DOOR_L = "DOOR L",
+    DOOR_R = "DOOR R",
+    OFFICE = "ESCRITÓRIO",
+} :: { [string]: string })
+
 -- Relógio (B.4): 0 → "12:00 AM", 1..6 → "1:00 AM" .. "6:00 AM"
 function Strings.clock(hour: number): string
     local display = if hour == 0 then 12 else hour
@@ -75,6 +116,11 @@ function Strings.nightLabel(night: number): string
         return Strings.HUD.nightTutorial
     end
     return string.format(Strings.HUD.night, night)
+end
+
+-- Firewall (B.4): ▮ por camada íntegra, ▯ por camada rompida
+function Strings.firewallBar(layers: number, max: number): string
+    return string.rep("▮", math.max(0, layers)) .. string.rep("▯", math.max(0, max - layers))
 end
 
 return table.freeze(Strings)

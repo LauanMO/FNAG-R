@@ -8,6 +8,8 @@ export type Enemy = "square" | "triangle" | "circle" | "hexagon"
 export type PowerSource = "base" | "door_left" | "door_right" | "tablet" | "leak"
 export type Interact = "door_left" | "door_right" | "terminal" | "notebook" | "tablet"
 export type EnemyCue = "arrival" | "repelled" | "footstep"
+export type NodeState = "clear" | "anomaly" | "dead"
+export type ServerStatus = "ok" | "anomalous" -- CAM 4: tráfego anômalo = vírus do Círculo pendente
 
 export type DoorState = { closed: boolean, jammed: boolean }
 
@@ -42,6 +44,7 @@ export type NightState = {
     minigame: { words: { string }, answerIndex: number, remaining: number }?,
     puzzle: { gate: string, options: { string } }?,
     restoreCooldown: number,
+    pingBusy: boolean, -- do RequestPing até PingCooldownOver (3.5a)
     -- Fases 3 e 5: PatrolAI, CircleAI, HexagonAI. `any` até as classes existirem.
     ai: { [string]: any },
 }
@@ -79,6 +82,7 @@ export type SaveData = {
 -- Cliente → Servidor
 export type StartNightPayload = { night: number }
 export type ToggleDoorPayload = { side: Side }
+export type SetTabletOpenPayload = { open: boolean }
 
 -- Servidor → Cliente
 export type SaveLoadedPayload = { save: SaveData }
@@ -89,6 +93,15 @@ export type PowerChangedPayload = { power: number, drainRate: number, sources: {
 export type DoorStateChangedPayload = { side: Side, closed: boolean, jammed: boolean, accepted: boolean }
 export type EnemyAudioCuePayload = { side: Side, cue: EnemyCue, volume: number }
 export type EnemyVisualPayload = { side: Side, visible: boolean }
+export type TabletStatePayload = { open: boolean, available: boolean, batteryRemaining: number? }
+export type PingResultPayload = {
+    nodes: { [string]: NodeState },
+    anomalies: number, -- nós com anomalia, inclusive os cegos
+    blind: number, -- desses, quantos estão em nó morto
+    serverStatus: ServerStatus,
+}
+export type CameraDeadPayload = { camera: string }
+export type FirewallChangedPayload = { layers: number, max: number }
 export type BlackoutStartedPayload = { tabletBatterySeconds: number }
 export type NightWonPayload = { night: number, nextNight: number }
 export type JumpscarePayload = { enemy: Enemy }

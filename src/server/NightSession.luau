@@ -91,8 +91,14 @@ function NightSession.new(players: { Player }, night: number): NightSession
         minigame = nil,
         puzzle = nil,
         restoreCooldown = 0,
+        pingBusy = false,
         ai = {},
     }
+    if RunService:IsStudio() then
+        for _, camera in GameConfig.Debug.deadCamerasAtStart do
+            state.deadCameras[camera] = true
+        end
+    end
 
     local self: NightSession = setmetatable(
         {
@@ -187,6 +193,15 @@ function NightSession.start(self: NightSession)
     self:setPhase(Enums.Phase.Boot)
     self:fire(Enums.Remote.HourChanged, { hour = s.hour } :: Types.HourChangedPayload)
     self:firePower()
+    -- Estado inicial dos subsistemas que o cliente desenha (5.6: cada Remote traz o estado completo)
+    self:fire(
+        Enums.Remote.FirewallChanged,
+        { layers = s.firewallLayers, max = GameConfig.Hexagon.maxLayers } :: Types.FirewallChangedPayload
+    )
+    self:fireTabletState()
+    for camera in s.deadCameras do
+        self:fire(Enums.Remote.CameraDead, { camera = camera } :: Types.CameraDeadPayload)
+    end
     -- Relógio, energia e IAs só começam depois do boot (3.1)
     self.scheduler:after("boot", GameConfig.Night.bootSeconds, function()
         self:beginRunning()
@@ -298,6 +313,10 @@ function NightSession.enterBlackout(self: NightSession)
         } :: Types.DoorStateChangedPayload
     )
     s.tabletBatteryRemaining = GameConfig.Blackout.tabletBatterySeconds
+    self.scheduler:every("tablet_battery", GameConfig.Blackout.batteryTickSeconds, function()
+        self:tickTabletBattery()
+    end)
+    self:fireTabletState()
     self:fire(
         Enums.Remote.BlackoutStarted,
         {
@@ -327,6 +346,54 @@ function NightSession.toggleDoor(self: NightSession, side: Types.Side)
     if accepted then
         self:firePower() -- o dreno mudou; as barrinhas do HUD refletem na hora (3.2)
     end
+end
+
+-- 3.5: o tablet só funciona sem camera_offline e, no blackout, enquanto a bateria dura (3.9)
+function NightSession.tabletAvailable(self: NightSession): boolean
+    local s = self.state
+    if s.corrupted[Enums.System.CameraOffline] then
+        return false
+    end
+    if s.phase == Enums.Phase.Blackout then
+        return (s.tabletBatteryRemaining or 0) > 0
+    end
+    return s.phase == Enums.Phase.Running
+end
+
+function NightSession.fireTabletState(self: NightSession)
+    local s = self.state
+    self:fire(
+        Enums.Remote.TabletState,
+        {
+            open = s.tabletOpen,
+            available = self:tabletAvailable(),
+            batteryRemaining = s.tabletBatteryRemaining,
+        } :: Types.TabletStatePayload
+    )
+end
+
+-- SetTabletOpen (5.6): abrir exige tablet disponível; fechar é sempre aceito. Responde sempre com o estado completo.
+function NightSession.setTablet(self: NightSession, open: boolean)
+    local s = self.state
+    if isOver(s.phase) then
+        return
+    end
+    s.tabletOpen = open and self:tabletAvailable()
+    self:fireTabletState()
+    self:firePower() -- o dreno mudou (3.5: tablet aberto custa energia)
+end
+
+-- 3.9: bateria interna do tablet no blackout; em 0, tablet (e terminal, Fase 5) desligam
+function NightSession.tickTabletBattery(self: NightSession)
+    local s = self.state
+    local remaining = math.max(0, (s.tabletBatteryRemaining or 0) - GameConfig.Blackout.batteryTickSeconds)
+    s.tabletBatteryRemaining = remaining
+    if remaining <= 0 then
+        self.scheduler:remove("tablet_battery")
+        s.tabletOpen = false
+        self:fire(Enums.Remote.TabletBatteryDead, {})
+    end
+    self:fireTabletState()
 end
 
 function NightSession.win(self: NightSession)

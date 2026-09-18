@@ -12,6 +12,7 @@ local Remotes = require(Shared.Remotes)
 local Types = require(Shared.Types)
 local NightSession = require(script.Parent.NightSession)
 local RateLimiter = require(script.Parent.RateLimiter)
+local RadarService = require(script.Parent.RadarService)
 
 local SAVE_VERSION = 1
 
@@ -20,6 +21,7 @@ local NightService = {}
 local sessions: { [Player]: NightSession.NightSession } = {}
 local saves: { [Player]: Types.SaveData } = {}
 local toggleDoorLimiter = RateLimiter.new(GameConfig.Doors.maxTogglesPerSecond)
+local tabletLimiter = RateLimiter.new(GameConfig.Tablet.maxTogglesPerSecond)
 
 local function log(...: any)
     if GameConfig.Debug.logSession then
@@ -137,6 +139,31 @@ local function onToggleDoor(player: Player, payload: unknown)
     session:toggleDoor(side)
 end
 
+-- SetTabletOpen { open }: sessão viva, booleano e dentro do rate limit; a sessão decide se abre (5.6)
+local function onSetTabletOpen(player: Player, payload: unknown)
+    local session = sessions[player]
+    if not session or typeof(payload) ~= "table" then
+        return
+    end
+    -- cast justificado: o payload vem do cliente e é validado campo a campo
+    local open = (payload :: any).open
+    if typeof(open) ~= "boolean" then
+        return
+    end
+    if not tabletLimiter:allow(player) then
+        return
+    end
+    session:setTablet(open)
+end
+
+-- RequestPing {}: o RadarService confere tablet aberto e ping livre; o cooldown já limita a taxa (5.9)
+local function onRequestPing(player: Player)
+    local session = sessions[player]
+    if session then
+        RadarService.requestPing(session)
+    end
+end
+
 local function onPlayerAdded(player: Player)
     saves[player] = defaultSave()
     sendSave(player)
@@ -146,6 +173,7 @@ local function onPlayerRemoving(player: Player)
     endSession(player)
     saves[player] = nil
     toggleDoorLimiter:forget(player)
+    tabletLimiter:forget(player)
 end
 
 function NightService.init()
@@ -161,6 +189,8 @@ function NightService.init()
     end)
     Remotes.get(Enums.Remote.StartNight).OnServerEvent:Connect(onStartNight)
     Remotes.get(Enums.Remote.ToggleDoor).OnServerEvent:Connect(onToggleDoor)
+    Remotes.get(Enums.Remote.SetTabletOpen).OnServerEvent:Connect(onSetTabletOpen)
+    Remotes.get(Enums.Remote.RequestPing).OnServerEvent:Connect(onRequestPing)
     Remotes.get(Enums.Remote.ReturnToMenu).OnServerEvent:Connect(function(player: Player)
         endSession(player)
     end)

@@ -25,6 +25,10 @@ local KEY_DOOR_LEFT = Enum.KeyCode.A
 local KEY_DOOR_RIGHT = Enum.KeyCode.D
 local PAD_DOOR_LEFT = Enum.KeyCode.ButtonL1
 local PAD_DOOR_RIGHT = Enum.KeyCode.ButtonR1
+local KEY_TABLET = Enum.KeyCode.Space
+local PAD_TABLET = Enum.KeyCode.ButtonY
+-- Esc é reservado pelo menu do Roblox e não chega aos scripts: no teclado, fecha-se com a mesma tecla que abriu
+local PAD_CLOSE = Enum.KeyCode.ButtonB
 
 local InputController = {}
 
@@ -32,6 +36,8 @@ local InputController = {}
 InputController.doorToggle = Signal.new() :: Signal.Signal<Types.Side>
 InputController.interact = Signal.new() :: Signal.Signal<Types.Interact>
 InputController.touchModeChanged = Signal.new() :: Signal.Signal<boolean>
+InputController.tabletToggle = Signal.new() :: Signal.Signal<()>
+InputController.overlayClose = Signal.new() :: Signal.Signal<()>
 
 -- "mouse": o alvo de olhar vem da posição do cursor; "manual": vem do arrasto/stick acumulado
 local lookMode: "mouse" | "manual" = "mouse"
@@ -93,6 +99,10 @@ local function onInputBegan(input: InputObject, processed: boolean)
             InputController.doorToggle:Fire(Enums.Side.Left)
         elseif key == KEY_DOOR_RIGHT or key == PAD_DOOR_RIGHT then
             InputController.doorToggle:Fire(Enums.Side.Right)
+        elseif key == KEY_TABLET or key == PAD_TABLET then
+            InputController.tabletToggle:Fire()
+        elseif key == PAD_CLOSE then
+            InputController.overlayClose:Fire()
         end
     elseif inputType == Enum.UserInputType.MouseButton1 then
         raycastInteract(input.Position.X, input.Position.Y)
