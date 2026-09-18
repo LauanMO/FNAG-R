@@ -103,11 +103,11 @@ local GameConfig = {
         rollOffMaxDistance = 40, -- alcance dos sons posicionais, em studs (5.13)
     },
     Debug = {
-        timeScale = 5, -- 5 = noite de 72s para testar. Só tem efeito em Studio (5.9).
+        timeScale = 1, -- 5 = noite de 72s para testar. Só tem efeito em Studio (5.9).
         deterministicSeed = nil :: number?, -- número = RNG reproduzível. Só em Studio.
-        logAI = false, -- imprime cada sorteio das IAs (Fase 3)
+        logAI = true, -- imprime cada sorteio das IAs (Fase 3)
         logSession = true, -- imprime boot, fases e fim de noite no Output
-        deadCamerasAtStart = {} :: { string }, -- ex.: { "CAM1" } para testar "em nó cego". Só em Studio.
+        deadCamerasAtStart = {CAM1} :: { string }, -- ex.: { "CAM1" } para testar "em nó cego". Só em Studio.
     },
 }
 
