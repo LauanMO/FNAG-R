@@ -1,22 +1,38 @@
 --!strict
 -- NightSession: todo o estado de uma noite e seu ciclo de vida (PLANEJAMENTO 5.4).
--- Fase 1: boot, relógio, energia, blackout (só estado + eventos), vitória e derrota.
--- Portas físicas entram na Fase 2; IAs nas Fases 3 e 5. Tudo que muda estado dispara o Remote correspondente (5.6).
+-- Boot, relógio, energia, portas, tablet, terminal, blackout, gerador, vitória e derrota.
+-- As IAs físicas nascem aqui; serviços registram as suas por addAITask (Hexágono: FirewallService).
+-- Tudo que muda estado dispara o Remote correspondente (5.6).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage.Shared
+local Commands = require(Shared.Commands)
 local GameConfig = require(Shared.GameConfig)
 local Enums = require(Shared.Enums)
 local Remotes = require(Shared.Remotes)
 local Signal = require(Shared.Signal)
+local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
 local Scheduler = require(script.Parent.Scheduler)
 local PatrolAI = require(script.Parent.ai.PatrolAI)
 
 local NightSession = {}
 NightSession.__index = NightSession
+
+-- Nomes das tarefas do Scheduler que os serviços também usam (FirewallService)
+NightSession.Task = table.freeze({
+    Boot = "boot",
+    Clock = "clock",
+    Power = "power",
+    TabletBattery = "tablet_battery",
+    PuzzleNext = "puzzle_next",
+    RestoreCooldown = "restore_cooldown",
+    Intrusion = "intrusion",
+})
+
+type AITask = { name: string, interval: number, fn: () -> () }
 
 type Fields = {
     state: Types.NightState,
@@ -28,6 +44,7 @@ type Fields = {
     ended: Signal.Signal<Types.Phase, Types.Enemy?>,
     destroyed: boolean,
     patrols: { PatrolAI.PatrolAI }, -- Quadrado e Triângulo, na ordem de registro
+    aiTasks: { AITask }, -- IAs registradas por serviços; entram no Scheduler no fim do boot
 }
 
 export type NightSession = typeof(setmetatable({} :: Fields, NightSession))
@@ -51,6 +68,27 @@ local function log(...: any)
     end
 end
 
+-- Níveis da noite (7.4). Em Studio, Debug.levelOverrides troca níveis para testar (ex.: { hexagon = 20 }).
+local function levelsFor(night: number): Types.NightLevels
+    local base = GameConfig.Nights[night]
+    assert(base ~= nil, `NightSession: noite inválida ({night})`)
+    local levels: Types.NightLevels = table.clone(base)
+    if RunService:IsStudio() then
+        for name, level in GameConfig.Debug.levelOverrides do
+            if name == Enums.Enemy.Square then
+                levels.square = level
+            elseif name == Enums.Enemy.Triangle then
+                levels.triangle = level
+            elseif name == Enums.Enemy.Circle then
+                levels.circle = level
+            elseif name == Enums.Enemy.Hexagon then
+                levels.hexagon = level
+            end
+        end
+    end
+    return levels
+end
+
 -- Config da IA a partir do GameConfig.Patrol (tabela nova para o tipo literal de side virar Types.Side)
 local function patrolConfig(tickSeconds: number, side: Types.Side, path: { string }): PatrolAI.Config
     return { tickSeconds = tickSeconds, side = side, path = path }
@@ -64,9 +102,12 @@ local function isOver(phase: Types.Phase): boolean
     return phase == Enums.Phase.Won or phase == Enums.Phase.Lost
 end
 
+local function line(text: string, kind: Types.EchoKind): Types.TerminalLine
+    return { text = text, kind = kind }
+end
+
 function NightSession.new(players: { Player }, night: number): NightSession
-    local levels = GameConfig.Nights[night]
-    assert(levels ~= nil, `NightSession: noite inválida ({night})`)
+    local levels = levelsFor(night)
 
     local state: Types.NightState = {
         night = night,
@@ -110,6 +151,7 @@ function NightSession.new(players: { Player }, night: number): NightSession
             ended = Signal.new(),
             destroyed = false,
             patrols = {},
+            aiTasks = {},
         } :: Fields,
         NightSession
     )
@@ -186,6 +228,16 @@ function NightSession.firePower(self: NightSession)
     )
 end
 
+-- Soma (ou subtrai) energia de uma vez: penalidade do puzzle (3.2). Zerar em "running" leva ao blackout.
+function NightSession.addPower(self: NightSession, delta: number)
+    local s = self.state
+    s.power = math.clamp(s.power + delta, 0, GameConfig.Power.max)
+    self:firePower()
+    if s.power <= 0 then
+        self:enterBlackout()
+    end
+end
+
 function NightSession.start(self: NightSession)
     local s = self.state
     log(`noite {s.night} — boot ({GameConfig.Night.bootSeconds}s, timeScale {self.scheduler.timeScale})`)
@@ -196,14 +248,19 @@ function NightSession.start(self: NightSession)
     -- Estado inicial dos subsistemas que o cliente desenha (5.6: cada Remote traz o estado completo)
     self:fire(
         Enums.Remote.FirewallChanged,
-        { layers = s.firewallLayers, max = GameConfig.Hexagon.maxLayers } :: Types.FirewallChangedPayload
+        {
+            layers = s.firewallLayers,
+            max = GameConfig.Hexagon.maxLayers,
+            cause = Enums.FirewallCause.Init,
+        } :: Types.FirewallChangedPayload
     )
     self:fireTabletState()
+    self:firePalette()
     for camera in s.deadCameras do
         self:fire(Enums.Remote.CameraDead, { camera = camera } :: Types.CameraDeadPayload)
     end
     -- Relógio, energia e IAs só começam depois do boot (3.1)
-    self.scheduler:after("boot", GameConfig.Night.bootSeconds, function()
+    self.scheduler:after(NightSession.Task.Boot, GameConfig.Night.bootSeconds, function()
         self:beginRunning()
     end)
 end
@@ -214,16 +271,32 @@ function NightSession.beginRunning(self: NightSession)
     end
     log("running")
     self:setPhase(Enums.Phase.Running)
-    self.scheduler:every("clock", GameConfig.Night.clockTickSeconds, function()
+    -- fireTabletState() no start() rodou durante o boot (tabletAvailable() = false); reenvia agora que
+    -- a fase virou "running", senão o tablet fica preso em "indisponível" até o próximo evento (blackout).
+    self:fireTabletState()
+    self.scheduler:every(NightSession.Task.Clock, GameConfig.Night.clockTickSeconds, function()
         self:tickClock()
     end)
-    self.scheduler:every("power", GameConfig.Power.tickSeconds, function()
+    self.scheduler:every(NightSession.Task.Power, GameConfig.Power.tickSeconds, function()
         self:tickPower()
     end)
     for _, ai in self.patrols do
         self.scheduler:every(aiTaskName(ai), ai.cfg.tickSeconds, function()
             ai:tick()
         end)
+    end
+    for _, entry in self.aiTasks do
+        self.scheduler:every(entry.name, entry.interval, entry.fn)
+    end
+end
+
+-- IAs de serviços (Hexágono, Círculo). Registradas antes do start(), entram no Scheduler no fim do boot,
+-- depois das físicas: a ordem de registro mantém os sorteios reproduzíveis com seed fixa.
+function NightSession.addAITask(self: NightSession, name: string, interval: number, fn: () -> ())
+    table.insert(self.aiTasks, { name = name, interval = interval, fn = fn })
+    local phase = self.state.phase
+    if phase == Enums.Phase.Running or phase == Enums.Phase.Blackout then
+        self.scheduler:every(name, interval, fn)
     end
 end
 
@@ -246,7 +319,7 @@ function NightSession.inDawnGrace(self: NightSession): boolean
     return remaining <= GameConfig.Night.graceBeforeDawn
 end
 
--- 3.9: no blackout os físicos "sentem o cheiro": ticks pela metade. scale = 1 restaura (reset generator, Fase 5).
+-- 3.9: no blackout os físicos "sentem o cheiro": ticks pela metade. scale = 1 restaura (reset generator).
 function NightSession.setAiTickScale(self: NightSession, scale: number)
     for _, ai in self.patrols do
         self.scheduler:setInterval(aiTaskName(ai), ai.cfg.tickSeconds * scale)
@@ -282,7 +355,19 @@ function NightSession.tickPower(self: NightSession)
     end
 end
 
--- 3.9. Fase 1: só estado e eventos. Luzes e portas físicas vêm na Fase 2; ticks das IAs pela metade na Fase 3.
+local function fireDoor(self: NightSession, side: Types.Side, door: Types.DoorState, accepted: boolean)
+    self:fire(
+        Enums.Remote.DoorStateChanged,
+        {
+            side = side,
+            closed = door.closed,
+            jammed = door.jammed,
+            accepted = accepted,
+        } :: Types.DoorStateChangedPayload
+    )
+end
+
+-- 3.9: portas abrem, luzes apagam, tablet e terminal ficam na bateria interna
 function NightSession.enterBlackout(self: NightSession)
     local s = self.state
     if s.phase ~= Enums.Phase.Running then
@@ -294,35 +379,32 @@ function NightSession.enterBlackout(self: NightSession)
     -- As portas perdem a trava magnética e abrem sozinhas
     s.doors.left.closed = false
     s.doors.right.closed = false
-    self:fire(
-        Enums.Remote.DoorStateChanged,
-        {
-            side = Enums.Side.Left,
-            closed = false,
-            jammed = s.doors.left.jammed,
-            accepted = true,
-        } :: Types.DoorStateChangedPayload
-    )
-    self:fire(
-        Enums.Remote.DoorStateChanged,
-        {
-            side = Enums.Side.Right,
-            closed = false,
-            jammed = s.doors.right.jammed,
-            accepted = true,
-        } :: Types.DoorStateChangedPayload
-    )
+    fireDoor(self, Enums.Side.Left, s.doors.left, true)
+    fireDoor(self, Enums.Side.Right, s.doors.right, true)
     s.tabletBatteryRemaining = GameConfig.Blackout.tabletBatterySeconds
-    self.scheduler:every("tablet_battery", GameConfig.Blackout.batteryTickSeconds, function()
+    self.scheduler:every(NightSession.Task.TabletBattery, GameConfig.Blackout.batteryTickSeconds, function()
         self:tickTabletBattery()
     end)
     self:fireTabletState()
     self:fire(
         Enums.Remote.BlackoutStarted,
-        {
-            tabletBatterySeconds = GameConfig.Blackout.tabletBatterySeconds,
-        } :: Types.BlackoutStartedPayload
+        { tabletBatterySeconds = GameConfig.Blackout.tabletBatterySeconds } :: Types.BlackoutStartedPayload
     )
+end
+
+-- 3.9: saída do blackout pelo reset generator. Luzes e botões voltam; as portas CONTINUAM abertas.
+function NightSession.exitBlackout(self: NightSession)
+    local s = self.state
+    if s.phase ~= Enums.Phase.Blackout then
+        return
+    end
+    log("blackout encerrado pelo gerador")
+    self.scheduler:remove(NightSession.Task.TabletBattery)
+    s.tabletBatteryRemaining = nil
+    self:setAiTickScale(1)
+    self:setPhase(Enums.Phase.Running)
+    self:fireTabletState()
+    self:fire(Enums.Remote.BlackoutEnded, {})
 end
 
 -- 3.3 / 5.8: alterna a porta. Nega fora de "running" (boot, blackout) ou com a porta travada pelo Hexágono.
@@ -334,15 +416,7 @@ function NightSession.toggleDoor(self: NightSession, side: Types.Side)
     if accepted then
         door.closed = not door.closed
     end
-    self:fire(
-        Enums.Remote.DoorStateChanged,
-        {
-            side = side,
-            closed = door.closed,
-            jammed = door.jammed,
-            accepted = accepted,
-        } :: Types.DoorStateChangedPayload
-    )
+    fireDoor(self, side, door, accepted)
     if accepted then
         self:firePower() -- o dreno mudou; as barrinhas do HUD refletem na hora (3.2)
     end
@@ -383,17 +457,115 @@ function NightSession.setTablet(self: NightSession, open: boolean)
     self:firePower() -- o dreno mudou (3.5: tablet aberto custa energia)
 end
 
--- 3.9: bateria interna do tablet no blackout; em 0, tablet (e terminal, Fase 5) desligam
+-- 3.9: o terminal roda na bateria do tablet no blackout; camera_offline não o afeta
+function NightSession.terminalAvailable(self: NightSession): boolean
+    local s = self.state
+    if s.phase == Enums.Phase.Blackout then
+        return (s.tabletBatteryRemaining or 0) > 0
+    end
+    return s.phase == Enums.Phase.Running
+end
+
+-- SetTerminalOpen (5.6): o servidor precisa saber (o Círculo não ataca com o terminal aberto, Fase 5b).
+-- Fechar o terminal fecha o painel do puzzle junto.
+function NightSession.setTerminal(self: NightSession, open: boolean)
+    local s = self.state
+    if isOver(s.phase) then
+        return
+    end
+    s.terminalOpen = open and self:terminalAvailable()
+    if not s.terminalOpen then
+        self:closePuzzle()
+    end
+end
+
+-- 3.9: bateria interna do tablet no blackout; em 0, tablet e terminal desligam
 function NightSession.tickTabletBattery(self: NightSession)
     local s = self.state
     local remaining = math.max(0, (s.tabletBatteryRemaining or 0) - GameConfig.Blackout.batteryTickSeconds)
     s.tabletBatteryRemaining = remaining
     if remaining <= 0 then
-        self.scheduler:remove("tablet_battery")
+        self.scheduler:remove(NightSession.Task.TabletBattery)
         s.tabletOpen = false
+        s.terminalOpen = false
+        self:closePuzzle()
         self:fire(Enums.Remote.TabletBatteryDead, {})
     end
     self:fireTabletState()
+end
+
+-- Linha no terminal do jogador (resposta de comando)
+function NightSession.echo(self: NightSession, text: string, kind: Types.EchoKind)
+    self:fire(Enums.Remote.TerminalEcho, { text = text, kind = kind } :: Types.TerminalEchoPayload)
+end
+
+-- Alerta assíncrono: só aparece se o terminal estiver aberto (B.1)
+function NightSession.alert(self: NightSession, text: string, kind: Types.EchoKind)
+    if self.state.terminalOpen then
+        self:echo(text, kind)
+    end
+end
+
+-- Fecha o painel do puzzle sem resolver (cancelar, fechar o terminal, bateria acabar)
+function NightSession.closePuzzle(self: NightSession)
+    local s = self.state
+    if not s.puzzle then
+        return
+    end
+    s.puzzle = nil
+    self.scheduler:remove(NightSession.Task.PuzzleNext)
+    self:fire(Enums.Remote.PuzzleClosed, {})
+end
+
+-- 3.6: paleta = reparos dos sistemas corrompidos agora, status, restore_firewall e reset generator quando cabem
+function NightSession.palette(self: NightSession): { string }
+    local s = self.state
+    local commands: { string } = {}
+    for _, system in GameConfig.Hexagon.systems do
+        local command = Commands.repairFor[system]
+        if s.corrupted[system] and command then
+            table.insert(commands, command)
+        end
+    end
+    table.insert(commands, Commands.Status)
+    local canRestore = s.firewallLayers < GameConfig.Hexagon.maxLayers
+        and not self.scheduler:has(NightSession.Task.RestoreCooldown)
+    if canRestore then
+        table.insert(commands, Commands.RestoreFirewall)
+    end
+    if s.generatorUsesLeft > 0 then
+        table.insert(commands, Commands.ResetGenerator)
+    end
+    return commands
+end
+
+function NightSession.firePalette(self: NightSession)
+    self:fire(Enums.Remote.TerminalPalette, { commands = self:palette() } :: Types.TerminalPalettePayload)
+end
+
+-- 3.9: `reset generator`. Uma vez por noite; energia vai para generatorResetTo. Acima disso é punição.
+-- Em blackout, sai do blackout mas não fecha as portas. Devolve as linhas da resposta do terminal.
+function NightSession.generatorReset(self: NightSession): { Types.TerminalLine }
+    local s = self.state
+    local T = Strings.Terminal
+    if s.generatorUsesLeft <= 0 then
+        return { line(T.generatorSpent, Enums.EchoKind.Err) }
+    end
+    local target = GameConfig.Power.generatorResetTo
+    local punished = s.power > target
+    s.generatorUsesLeft -= 1
+    s.power = target
+    self:exitBlackout()
+    self:firePower()
+    self:fire(
+        Enums.Remote.GeneratorUsed,
+        { punished = punished, power = s.power, usesLeft = s.generatorUsesLeft } :: Types.GeneratorUsedPayload
+    )
+    log(`gerador usado — punição: {punished}`)
+    local result = if punished
+        then line(string.format(T.generatorPunished, target), Enums.EchoKind.Err)
+        else line(string.format(T.generatorOk, target), Enums.EchoKind.Ok)
+    return { line(T.generatorStart, Enums.EchoKind.Info), result }
 end
 
 function NightSession.win(self: NightSession)

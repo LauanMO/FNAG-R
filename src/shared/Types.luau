@@ -10,6 +10,9 @@ export type Interact = "door_left" | "door_right" | "terminal" | "notebook" | "t
 export type EnemyCue = "arrival" | "repelled" | "footstep"
 export type NodeState = "clear" | "anomaly" | "dead"
 export type ServerStatus = "ok" | "anomalous" -- CAM 4: tráfego anômalo = vírus do Círculo pendente
+export type EchoKind = "ok" | "info" | "err" | "echo" | "clear" -- "clear" limpa a tela do terminal
+export type FirewallCause = "init" | "break" | "restore"
+export type TerminalLine = { text: string, kind: EchoKind }
 
 export type DoorState = { closed: boolean, jammed: boolean }
 
@@ -42,10 +45,10 @@ export type NightState = {
     tabletBatteryRemaining: number?, -- só em blackout
     virusAlert: { remaining: number }?,
     minigame: { words: { string }, answerIndex: number, remaining: number }?,
-    puzzle: { gate: string, options: { string } }?,
+    puzzle: { gate: string, options: { string }, locked: boolean }?, -- locked: nova tabela a caminho após erro
     restoreCooldown: number,
     pingBusy: boolean, -- do RequestPing até PingCooldownOver (3.5a)
-    -- Fases 3 e 5: PatrolAI, CircleAI, HexagonAI. `any` até as classes existirem.
+    -- PatrolAI (Fase 3), HexagonAI (5a), CircleAI (5b). `any`: classes de módulos diferentes, só para debug.
     ai: { [string]: any },
 }
 
@@ -83,6 +86,9 @@ export type SaveData = {
 export type StartNightPayload = { night: number }
 export type ToggleDoorPayload = { side: Side }
 export type SetTabletOpenPayload = { open: boolean }
+export type SetTerminalOpenPayload = { open: boolean }
+export type TerminalCommandPayload = { text: string }
+export type PuzzlePickPayload = { gate: string }
 
 -- Servidor → Cliente
 export type SaveLoadedPayload = { save: SaveData }
@@ -101,7 +107,15 @@ export type PingResultPayload = {
     serverStatus: ServerStatus,
 }
 export type CameraDeadPayload = { camera: string }
-export type FirewallChangedPayload = { layers: number, max: number }
+export type FirewallChangedPayload = { layers: number, max: number, cause: FirewallCause }
+-- SystemCorrupted e SystemRepaired: o sistema que mudou e a lista completa dos corrompidos (5.6)
+export type SystemChangedPayload = { system: string, corrupted: { string } }
+export type IntrusionStatePayload = { active: boolean, remaining: number? }
+export type TerminalEchoPayload = TerminalLine
+export type TerminalPalettePayload = { commands: { string } }
+export type PuzzleStartPayload = { truthTable: { { number } }, options: { string } }
+export type PuzzleResultPayload = { correct: boolean, gate: string, layers: number, penalty: number }
+export type GeneratorUsedPayload = { punished: boolean, power: number, usesLeft: number }
 export type BlackoutStartedPayload = { tabletBatterySeconds: number }
 export type NightWonPayload = { night: number, nextNight: number }
 export type JumpscarePayload = { enemy: Enemy }

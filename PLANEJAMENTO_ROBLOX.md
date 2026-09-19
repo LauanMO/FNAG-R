@@ -388,7 +388,7 @@ Sistemas estabilizados. Aguardando comando.
 | `restore_firewall` | Abre o puzzle de portas lógicas | firewall < 5 |
 | `reset generator` | Override do gerador (ver 3.9) | 1× por noite |
 
-Comando desconhecido: `command not found: <texto>`. Comando de reparo com sistema não corrompido: `[WARN] door_left_jammed is not currently corrupted.` [ORIGINAL]
+Comando desconhecido: `command not found` (sem repetir o texto do jogador, ver Segurança abaixo). Comando de reparo com sistema não corrompido: `[WARN] door_left_jammed is not currently corrupted.` [ORIGINAL]
 
 **O terminal no celular** [NOVO — restrição de plataforma]: digitar `unjam door_left` num teclado virtual com o Quadrado na porta é injusto. Solução: acima da linha de input, uma **paleta de comandos** — uma linha de botões pequenos com os comandos disponíveis *agora* (só os reparos de sistemas atualmente corrompidos, mais `status`, `restore_firewall` e `reset generator` quando aplicáveis). Tocar num botão preenche o input; o jogador ainda precisa apertar ENVIAR. No PC a paleta também aparece (é útil), e `Tab` autocompleta. A ficção continua sendo "digitar no terminal"; a paleta é o "histórico de comandos recentes" do sistema.
 
@@ -914,6 +914,7 @@ five-nights-at-geometry/
     │   ├── Remotes.luau             ← cria/retorna os RemoteEvents por nome
     │   ├── Signal.luau              ← classe Signal simples
     │   ├── LogicGates.luau          ← tabelas-verdade (usado por server e client)
+    │   ├── Commands.luau            ← lista fechada de comandos do terminal, normalização, reparo↔sistema
     │   └── Types.luau               ← tipos Luau exportados
     ├── server/                      → ServerScriptService/Server
     │   ├── Main.server.luau         ← bootstrap: PlayerAdded → SaveService → menu
@@ -938,6 +939,8 @@ five-nights-at-geometry/
     │   ├── HudController.luau       ← relógio, energia, firewall, sistemas, alertas
     │   ├── DoorController.luau      ← botões, predição, animação da porta
     │   ├── OfficeController.luau    ← luzes (blackout, flicker) e relógio de parede
+    │   ├── Overlay.luau             ← qual tela cheia está aberta (tablet/terminal/manual); uma por vez
+    │   ├── ClockGlitch.luau         ← embaralha HUD e relógio de parede durante clock_glitch
     │   ├── TabletController.luau    ← radar (TabletGui em client/ui)
     │   ├── TerminalController.luau  ← CLI + paleta + minigame + puzzle (subviews)
     │   ├── NotebookController.luau  ← manual
@@ -1047,6 +1050,7 @@ local GameConfig = {
         tickSeconds = 25,
         maxLayers = 5,
         intrusionSeconds = 20,
+        intrusionTickSeconds = 1,
         restoreCooldownSeconds = 10,
         systems = { "camera_offline", "door_left_jammed", "door_right_jammed", "clock_glitch", "power_leak" },
     },
@@ -1056,6 +1060,12 @@ local GameConfig = {
     },
     Terminal = {
         maxCommandsPerSecond = 5,
+        maxInputLength = 64,      -- TerminalCommand acima disso é ignorado (5.6)
+        maxTogglesPerSecond = 10, -- rate limit de SetTerminalOpen (5.9)
+    },
+    Puzzle = {
+        closeAfterCorrectSeconds = 1.2,
+        newTableAfterWrongSeconds = 1.4,
     },
     -- Níveis por noite. Índice = noite (0 = tutorial, 1-7, "custom" é montado em runtime).
     Nights = {
@@ -1081,6 +1091,7 @@ local GameConfig = {
         logAI = false,
         logSession = true,      -- imprime boot, fases e fim de noite no Output
         deadCamerasAtStart = {}, -- ex.: { "CAM1" } para testar "em nó cego" (Fase 4). Só em Studio.
+        levelOverrides = {},     -- ex.: { hexagon = 20 } para testar hackers em qualquer noite. Só em Studio.
     },
 }
 return table.freeze(GameConfig)  -- na prática, congelamento recursivo (deepFreeze)
@@ -1234,19 +1245,19 @@ Todos são `RemoteEvent`, criados em `ReplicatedStorage/Remotes` por `Remotes.lu
 | `MinigameStart` | `{ words: {string}, seconds }` | Terminal aberto com alerta |
 | `MinigameResult` | `{ success, cameraKilled: string? }` | |
 | `CameraDead` | `{ camera }` | Também por fusível |
-| `FirewallChanged` | `{ layers, max }` | |
-| `SystemCorrupted` | `{ system }` | |
-| `SystemRepaired` | `{ system }` | |
+| `FirewallChanged` | `{ layers, max, cause: "init"\|"break"\|"restore" }` | `cause` escolhe o som no cliente |
+| `SystemCorrupted` | `{ system, corrupted: {string} }` | `corrupted` = lista completa (o cliente redesenha tudo) |
+| `SystemRepaired` | `{ system, corrupted: {string} }` | idem |
 | `IntrusionState` | `{ active, remaining: number? }` | |
 | `PuzzleStart` | `{ truthTable: {{a,b,out}}, options: {string} }` | |
-| `PuzzleResult` | `{ correct, layers }` | |
+| `PuzzleResult` | `{ correct, gate, layers, penalty }` | `penalty` = 0 na Noite 0 |
 | `PuzzleClosed` | `{}` | |
-| `TerminalEcho` | `{ text, kind: "ok"\|"info"\|"err"\|"echo" }` | Toda resposta do terminal |
+| `TerminalEcho` | `{ text, kind: "ok"\|"info"\|"err"\|"echo"\|"clear" }` | Toda resposta do terminal; `clear` limpa a tela |
 | `TerminalPalette` | `{ commands: {string} }` | Sempre que o conjunto de comandos disponíveis muda |
 | `BlackoutStarted` | `{ tabletBatterySeconds }` | |
 | `BlackoutEnded` | `{}` | Após reset generator |
 | `TabletBatteryDead` | `{}` | |
-| `GeneratorUsed` | `{ punished: boolean, power }` | |
+| `GeneratorUsed` | `{ punished: boolean, power, usesLeft }` | |
 | `Jumpscare` | `{ enemy: "square"\|"triangle"\|"hexagon" }` | |
 | `NightWon` | `{ night, nextNight }` | |
 | `TutorialStep` | `{ step, text: {string}, waitFor: string }` | Noite 0 |
@@ -1521,16 +1532,16 @@ Maior fase. Dividir em 5a (Terminal + Manual + Hexágono + Puzzle) e 5b (Círcul
 **Arquivos:** `TerminalService`, `TerminalController`, `TerminalGui`, `NotebookController`, `NotebookGui`, `FirewallService`, `HexagonAI`, `LogicGates`, `CircleAI`, `MinigameService`.
 
 **5a:**
-- [ ] Terminal: abrir/fechar, boot, eco, `help`, `status`, `clear`, `command not found`.
-- [ ] `TerminalService` com lista canônica, rate limit, eco canônico.
-- [ ] Paleta de comandos (`TerminalPalette`), `Tab` autocompleta.
-- [ ] Manual com 5 páginas (Apêndice B).
-- [ ] `FirewallService`: camadas, `SystemCorrupted`/`SystemRepaired`, efeitos colaterais (jam congela a porta; leak soma dreno; glitch no relógio do HUD e da parede; camera_offline bloqueia tablet).
-- [ ] Comandos de reparo funcionando + `[WARN] ... is not currently corrupted`.
-- [ ] `HexagonAI` com d20.
-- [ ] Puzzle: `LogicGates` compartilhado, `PuzzleStart/Pick/Result/Cancel`, penalidade de 5%, cooldown de 10s.
-- [ ] Intrusão: contagem de 20s, alarme, tingimento ciano, abortar ao restaurar, jumpscare do Hexágono.
-- [ ] `reset generator`: 1× por noite, punição, saída do blackout (portas ficam abertas).
+- [x] Terminal: abrir/fechar (T, clique no monitor, botão TERMINAL, X no gamepad), boot, eco, `help`, `status`, `clear`, `command not found`.
+- [x] `TerminalService` com lista canônica (`Commands.luau`), rate limit, eco canônico.
+- [x] Paleta de comandos (`TerminalPalette`), `Tab` autocompleta e cicla.
+- [x] Manual com 5 páginas (Apêndice B), números lidos do `GameConfig`. Abre com M, clique no caderno, botão MANUAL, B no gamepad; setas viram a página.
+- [x] `FirewallService`: camadas, `SystemCorrupted`/`SystemRepaired`, efeitos colaterais (jam congela a porta; leak soma dreno; glitch no relógio do HUD e da parede; camera_offline bloqueia tablet).
+- [x] Comandos de reparo funcionando + `[WARN] ... is not currently corrupted`.
+- [x] `HexagonAI` com d20 (`Debug.logAI` imprime os sorteios).
+- [x] Puzzle: `LogicGates` compartilhado, `PuzzleStart/Pick/Result/Cancel`, penalidade de 5%, cooldown de 10s.
+- [x] Intrusão: contagem de 20s, alarme, tingimento ciano, abortar ao restaurar, jumpscare do Hexágono.
+- [x] `reset generator`: 1× por noite, punição, saída do blackout (portas ficam abertas).
 
 **5b:**
 - [ ] `CircleAI` com d20, alerta, fusível de 30s, CAM4 pulsando.
@@ -1539,6 +1550,8 @@ Maior fase. Dividir em 5a (Terminal + Manual + Hexágono + Puzzle) e 5b (Círcul
 - [ ] Listas de palavras no `Strings` (Apêndice B), com pelo menos 20 normais e 15 de erro.
 
 **Aceite 5a:** cenário 4.3 reproduzível: jam da porta direita → manual → `unjam door_right` → porta fecha → rebate. Cenário 4.8: intrusão abortada. `reset generator` acima de 50% pune; em blackout salva mas não fecha as portas.
+
+> Status 19/09/2026: 5a implementada; aceite no Studio pendente. Notas: tablet, terminal e manual são telas exclusivas (`Overlay.luau`); com qualquer uma aberta as portas não respondem. `Debug.levelOverrides = { hexagon = 20 }` faz o Hexágono agir em todo tick para testar na Noite 1. O jumpscare do Hexágono é o ciano tomando a tela a partir do centro, com estática e `FIREWALL BREACHED`; a grade hexagonal propriamente dita fica para a Fase 6.
 **Aceite 5b:** cenário 4.4: alerta com tablet aberto, minigame, acerto e erro (câmera morre e o ping passa a contar "em nó cego").
 
 ### Fase 6 — Áudio completo, jumpscares finais, polimento visual
@@ -2005,4 +2018,4 @@ Falas da Unidade de Assistência de Debug. As quatro primeiras são as originais
 
 ---
 
-*Fim do documento. Próxima ação: validar a Fase 4 no Studio (aceite da seção 6); depois, Fase 5a.*
+*Fim do documento. Próxima ação: validar a Fase 5a no Studio (aceite da seção 6: cenários 4.3, 4.5, 4.6 e 4.8); depois, Fase 5b.*

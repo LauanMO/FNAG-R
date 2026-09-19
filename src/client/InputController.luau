@@ -1,7 +1,8 @@
 --!strict
 -- InputController: converte teclado, mouse, toque e gamepad em intenções nomeadas (PLANEJAMENTO 5.11).
--- Ninguém mais lê UserInputService diretamente. Fase 2: olhar, portas (A/D, LB/RB, botão do HUD) e
--- clique/toque em objetos da sala (raycast — não há personagem, então ClickDetector não serve).
+-- Ninguém mais lê UserInputService diretamente. Olhar, portas, tablet, terminal, manual, fechar tela,
+-- autocompletar (Tab) e virar página, mais clique/toque em objetos da sala por raycast (não há personagem,
+-- então ClickDetector não serve).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -13,6 +14,7 @@ local GameConfig = require(Shared:WaitForChild("GameConfig"))
 local Enums = require(Shared:WaitForChild("Enums"))
 local Signal = require(Shared:WaitForChild("Signal"))
 local Types = require(Shared:WaitForChild("Types"))
+local Overlay = require(script.Parent.Overlay)
 
 -- Ergonomia (apresentação, não números de jogo)
 local TOUCH_PIXELS_FOR_FULL_ARC = 400 -- arrastar 400 px percorre o arco inteiro (−1 → 1)
@@ -21,14 +23,21 @@ local GAMEPAD_DEADZONE = 0.2
 local TAP_MAX_PIXELS = 12 -- toque que anda mais que isso é arrasto, não tap
 local RAY_LENGTH = 100
 
+-- Mapa de teclas (5.11). Esc é reservado pelo menu do Roblox e não chega aos scripts: no teclado, cada tela
+-- fecha com a mesma tecla que abriu; no gamepad, B fecha a tela aberta (ou abre o manual, se não há nenhuma).
 local KEY_DOOR_LEFT = Enum.KeyCode.A
 local KEY_DOOR_RIGHT = Enum.KeyCode.D
 local PAD_DOOR_LEFT = Enum.KeyCode.ButtonL1
 local PAD_DOOR_RIGHT = Enum.KeyCode.ButtonR1
 local KEY_TABLET = Enum.KeyCode.Space
 local PAD_TABLET = Enum.KeyCode.ButtonY
--- Esc é reservado pelo menu do Roblox e não chega aos scripts: no teclado, fecha-se com a mesma tecla que abriu
-local PAD_CLOSE = Enum.KeyCode.ButtonB
+local KEY_TERMINAL = Enum.KeyCode.T
+local PAD_TERMINAL = Enum.KeyCode.ButtonX
+local KEY_NOTEBOOK = Enum.KeyCode.M
+local PAD_BACK = Enum.KeyCode.ButtonB
+local KEY_AUTOCOMPLETE = Enum.KeyCode.Tab
+local PREV_KEYS = { Enum.KeyCode.Left, Enum.KeyCode.DPadLeft }
+local NEXT_KEYS = { Enum.KeyCode.Right, Enum.KeyCode.DPadRight }
 
 local InputController = {}
 
@@ -37,7 +46,10 @@ InputController.doorToggle = Signal.new() :: Signal.Signal<Types.Side>
 InputController.interact = Signal.new() :: Signal.Signal<Types.Interact>
 InputController.touchModeChanged = Signal.new() :: Signal.Signal<boolean>
 InputController.tabletToggle = Signal.new() :: Signal.Signal<()>
-InputController.overlayClose = Signal.new() :: Signal.Signal<()>
+InputController.terminalToggle = Signal.new() :: Signal.Signal<()>
+InputController.notebookToggle = Signal.new() :: Signal.Signal<()>
+InputController.autocomplete = Signal.new() :: Signal.Signal<()>
+InputController.navigate = Signal.new() :: Signal.Signal<number> -- −1 anterior, +1 próxima
 
 -- "mouse": o alvo de olhar vem da posição do cursor; "manual": vem do arrasto/stick acumulado
 local lookMode: "mouse" | "manual" = "mouse"
@@ -88,22 +100,42 @@ local function raycastInteract(screenX: number, screenY: number)
     end
 end
 
-local function onInputBegan(input: InputObject, processed: boolean)
-    if processed then
-        return -- foco num TextBox (terminal) ou toque em botão do HUD
-    end
-    local inputType = input.UserInputType
-    if inputType == Enum.UserInputType.Keyboard or inputType == Enum.UserInputType.Gamepad1 then
-        local key = input.KeyCode
-        if key == KEY_DOOR_LEFT or key == PAD_DOOR_LEFT then
-            InputController.doorToggle:Fire(Enums.Side.Left)
-        elseif key == KEY_DOOR_RIGHT or key == PAD_DOOR_RIGHT then
-            InputController.doorToggle:Fire(Enums.Side.Right)
-        elseif key == KEY_TABLET or key == PAD_TABLET then
-            InputController.tabletToggle:Fire()
-        elseif key == PAD_CLOSE then
-            InputController.overlayClose:Fire()
+local function onKey(key: Enum.KeyCode)
+    if key == KEY_DOOR_LEFT or key == PAD_DOOR_LEFT then
+        InputController.doorToggle:Fire(Enums.Side.Left)
+    elseif key == KEY_DOOR_RIGHT or key == PAD_DOOR_RIGHT then
+        InputController.doorToggle:Fire(Enums.Side.Right)
+    elseif key == KEY_TABLET or key == PAD_TABLET then
+        InputController.tabletToggle:Fire()
+    elseif key == KEY_TERMINAL or key == PAD_TERMINAL then
+        InputController.terminalToggle:Fire()
+    elseif key == KEY_NOTEBOOK then
+        InputController.notebookToggle:Fire()
+    elseif key == PAD_BACK then
+        if Overlay.isAnyOpen() then
+            Overlay.requestClose()
+        else
+            InputController.notebookToggle:Fire()
         end
+    elseif table.find(PREV_KEYS, key) then
+        InputController.navigate:Fire(-1)
+    elseif table.find(NEXT_KEYS, key) then
+        InputController.navigate:Fire(1)
+    end
+end
+
+local function onInputBegan(input: InputObject, processed: boolean)
+    local inputType = input.UserInputType
+    if input.KeyCode == KEY_AUTOCOMPLETE then
+        -- Tab chega "processado" justamente quando importa: com o foco no TextBox do terminal
+        InputController.autocomplete:Fire()
+        return
+    end
+    if processed then
+        return -- foco num TextBox (terminal) ou toque em botão/tela cheia
+    end
+    if inputType == Enum.UserInputType.Keyboard or inputType == Enum.UserInputType.Gamepad1 then
+        onKey(input.KeyCode)
     elseif inputType == Enum.UserInputType.MouseButton1 then
         raycastInteract(input.Position.X, input.Position.Y)
     elseif inputType == Enum.UserInputType.Touch then

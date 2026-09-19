@@ -16,6 +16,7 @@ local Types = require(Shared:WaitForChild("Types"))
 local AudioController = require(script.Parent.AudioController)
 local HudController = require(script.Parent.HudController)
 local InputController = require(script.Parent.InputController)
+local Overlay = require(script.Parent.Overlay)
 
 -- Cores do botão de parede por estado (apresentação)
 local BUTTON_OPEN = Color3.fromRGB(80, 200, 120)
@@ -40,7 +41,6 @@ local views: { [string]: DoorView } = {}
 local nightActive = false
 local running = false -- o servidor só aceita em "running" (5.8): boot e blackout negam
 local blackout = false
-local tabletOpen = false -- com o tablet aberto o jogador não vê o escritório nem fecha portas (3.5)
 
 local function findView(side: Types.Side): DoorView
     local office = Workspace:WaitForChild(Enums.Office.Model)
@@ -106,7 +106,8 @@ end
 
 function DoorController.toggle(side: Types.Side)
     local view = views[side]
-    if not view or not nightActive or tabletOpen then
+    -- Com tablet, terminal ou manual aberto o jogador não vê o escritório nem fecha portas (3.5)
+    if not view or not nightActive or Overlay.isAnyOpen() then
         return
     end
     if blackout or not running or view.jammed then
@@ -194,9 +195,6 @@ function DoorController.init()
     Remotes.get(Enums.Remote.DoorStateChanged).OnClientEvent:Connect(onDoorStateChanged)
     Remotes.get(Enums.Remote.NightStarted).OnClientEvent:Connect(onNightStarted)
     Remotes.get(Enums.Remote.NightPhase).OnClientEvent:Connect(onNightPhase)
-    Remotes.get(Enums.Remote.TabletState).OnClientEvent:Connect(function(payload: Types.TabletStatePayload)
-        tabletOpen = payload.open
-    end)
 end
 
 return DoorController

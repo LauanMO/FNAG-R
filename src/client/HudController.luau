@@ -1,6 +1,7 @@
 --!strict
--- HudController: relógio, noite, energia, boot, blackout, mensagens e tela de amanhecer (PLANEJAMENTO 5.12).
--- Só apresenta o que o servidor manda; nunca calcula estado a partir de eventos anteriores (5.6).
+-- HudController: relógio, noite, energia, firewall, sistemas corrompidos, gerador, intrusão, blackout,
+-- mensagens, botões de toque e tela de amanhecer (PLANEJAMENTO 5.12, B.4).
+-- Só apresenta o que o servidor manda; cada Remote traz o estado completo do seu subsistema (5.6).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -17,6 +18,8 @@ local UiKit = require(script.Parent.ui.UiKit)
 local HudGui = require(script.Parent.ui.HudGui)
 local DawnGui = require(script.Parent.ui.DawnGui)
 local InputController = require(script.Parent.InputController)
+local Overlay = require(script.Parent.Overlay)
+local ClockGlitch = require(script.Parent.ClockGlitch)
 
 -- Números de apresentação, não de jogo (Apêndice C.7)
 local DAWN_CLOCK_SECONDS = 3 -- "6:00 AM" antes de "NOITE N CONCLUÍDA" (3.10)
@@ -24,6 +27,8 @@ local DAWN_MESSAGE_SECONDS = 3
 local MESSAGE_SECONDS = 2.5
 local PULSE_SECONDS = 0.6 -- barra de energia pulsando abaixo do aviso (3.2)
 local PULSE_TRANSPARENCY = 0.6
+local FIREWALL_FLASH_SECONDS = 0.4 -- o firewall pisca a cada camada rompida (3.8.4)
+local SYSTEM_LINE_HEIGHT = 0.19 -- fração da lista; cabem os 5 sistemas
 local POWER_SOURCE_SLOTS = 5 -- base + 2 portas + tablet + vazamento
 local BAR_FULL = "▮"
 local BAR_EMPTY = "▯"
@@ -38,9 +43,10 @@ local hud = HudGui.build(playerGui)
 local dawn = DawnGui.build(playerGui)
 local dawnToken = 0 -- invalida uma sequência de amanhecer pendente
 local messageToken = 0
+local firewallToken = 0
 local pulseTween: Tween? = nil
 local touchMode = false
-local tabletOpen = false
+local currentHour = 0
 
 local function setVisible(visible: boolean)
     hud.gui.Enabled = visible
@@ -66,16 +72,25 @@ local function setDoorButtonsEnabled(enabled: boolean)
     UiKit.setEnabled(hud.doorRightButton, enabled)
 end
 
--- Botões de toque (5.11). Com o tablet aberto os de porta somem (3.5); o de tablet fica para fechar.
+-- Botões de toque (5.11). Com tablet, terminal ou manual aberto, os de porta somem (3.5).
 local function applyTouchButtons()
-    hud.doorLeftButton.Visible = touchMode and not tabletOpen
-    hud.doorRightButton.Visible = touchMode and not tabletOpen
+    local overlayOpen = Overlay.isAnyOpen()
+    hud.doorLeftButton.Visible = touchMode and not overlayOpen
+    hud.doorRightButton.Visible = touchMode and not overlayOpen
     hud.tabletButton.Visible = touchMode
+    hud.terminalButton.Visible = touchMode
+    hud.manualButton.Visible = touchMode
 end
 
-local function setTouchButtonsVisible(visible: boolean)
-    touchMode = visible
+local function setTouchMode(on: boolean)
+    touchMode = on
     applyTouchButtons()
+end
+
+local function showClock()
+    if not ClockGlitch.isActive() then
+        hud.clock.Text = Strings.clock(currentHour)
+    end
 end
 
 local function updatePower(power: number, sources: { Types.PowerSource })
@@ -90,6 +105,41 @@ local function updatePower(power: number, sources: { Types.PowerSource })
     -- 1 barra = só o dreno base; cada fonte a mais acende uma barra (3.2)
     local active = math.clamp(#sources, 0, POWER_SOURCE_SLOTS)
     hud.powerSources.Text = string.rep(BAR_FULL, active) .. string.rep(BAR_EMPTY, POWER_SOURCE_SLOTS - active)
+end
+
+local function setGenerator(usesLeft: number)
+    hud.generator.Text = if usesLeft > 0
+        then string.format(Strings.HUD.generatorAvailable, usesLeft)
+        else Strings.HUD.generatorUsed
+end
+
+local function setSystems(corrupted: { string })
+    for _, child in hud.systems:GetChildren() do
+        if child:IsA("TextLabel") then
+            child:Destroy()
+        end
+    end
+    for i, system in corrupted do
+        local label = UiKit.label({
+            name = system,
+            parent = hud.systems,
+            position = UDim2.fromScale(0, 0),
+            size = UDim2.fromScale(1, SYSTEM_LINE_HEIGHT),
+            text = string.format(Strings.HUD.corruptedSystem, system),
+            color = UiKit.Color.danger,
+            xAlign = Enum.TextXAlignment.Left,
+            maxTextSize = 18,
+        })
+        label.LayoutOrder = i
+    end
+end
+
+local function setIntrusion(active: boolean, remaining: number?)
+    hud.intrusion.Visible = active
+    hud.intrusionTint.Visible = active
+    if active and remaining then
+        hud.intrusion.Text = string.format(Strings.HUD.intrusion, math.ceil(remaining))
+    end
 end
 
 -- Mensagem curta no centro da tela; some sozinha
@@ -108,12 +158,16 @@ end
 local function onNightStarted(payload: Types.NightStartedPayload)
     dawnToken += 1
     dawn.gui.Enabled = false
+    currentHour = 0
     hud.night.Text = Strings.nightLabel(payload.night)
-    hud.clock.Text = Strings.clock(0)
+    showClock()
     hud.blackout.Visible = false
     hud.blackout.Text = Strings.HUD.blackout
     hud.message.Visible = false
     hud.bootOverlay.Visible = true
+    setSystems({})
+    setIntrusion(false, nil)
+    setGenerator(GameConfig.Power.generatorUsesPerNight)
     setDoorButtonsEnabled(true)
     setVisible(true)
 end
@@ -131,11 +185,45 @@ local function onNightPhase(payload: Types.NightPhasePayload)
 end
 
 local function onHourChanged(payload: Types.HourChangedPayload)
-    hud.clock.Text = Strings.clock(payload.hour)
+    currentHour = payload.hour
+    showClock()
 end
 
 local function onPowerChanged(payload: Types.PowerChangedPayload)
     updatePower(payload.power, payload.sources)
+end
+
+local function onFirewallChanged(payload: Types.FirewallChangedPayload)
+    local C = UiKit.Color
+    hud.firewall.Text = Strings.HUD.firewall .. Strings.firewallBar(payload.layers, payload.max)
+    local baseColor = if payload.layers <= 1 then C.danger else C.hacker
+    hud.firewall.TextColor3 = baseColor
+    if payload.cause == Enums.FirewallCause.Break then
+        firewallToken += 1
+        local token = firewallToken
+        hud.firewall.TextColor3 = C.text
+        task.delay(FIREWALL_FLASH_SECONDS, function()
+            if token == firewallToken then
+                hud.firewall.TextColor3 = baseColor
+            end
+        end)
+    end
+end
+
+local function onTabletState(payload: Types.TabletStatePayload)
+    -- B.4: no blackout, o aviso mostra a bateria do tablet até ela zerar
+    local remaining = payload.batteryRemaining
+    if hud.blackout.Visible and remaining ~= nil then
+        hud.blackout.Text = if remaining > 0
+            then string.format(Strings.HUD.blackoutBattery, math.floor(remaining))
+            else Strings.HUD.blackout
+    end
+end
+
+local function onCameraDead(payload: Types.CameraDeadPayload)
+    HudController.showMessage(
+        string.format(Strings.HUD.cameraDead, Strings.NodeShort[payload.camera] or payload.camera)
+    )
 end
 
 -- 3.10: "6:00 AM" grande, 3s depois "NOITE N CONCLUÍDA", depois volta ao menu.
@@ -164,36 +252,22 @@ local function onNightWon(payload: Types.NightWonPayload)
     end)
 end
 
-local function onTabletState(payload: Types.TabletStatePayload)
-    tabletOpen = payload.open
-    applyTouchButtons()
-    -- B.4: no blackout, o aviso mostra a bateria do tablet até ela zerar
-    local remaining = payload.batteryRemaining
-    if hud.blackout.Visible and remaining ~= nil then
-        hud.blackout.Text = if remaining > 0
-            then string.format(Strings.HUD.blackoutBattery, math.floor(remaining))
-            else Strings.HUD.blackout
-    end
-end
-
-local function onCameraDead(payload: Types.CameraDeadPayload)
-    HudController.showMessage(
-        string.format(Strings.HUD.cameraDead, Strings.NodeShort[payload.camera] or payload.camera)
-    )
-end
-
 -- 3.10: o jumpscare toma a tela; o HUD some e a sequência de amanhecer pendente (se houver) é cancelada
 local function onJumpscare()
     dawnToken += 1
     setPulse(false)
     hud.message.Visible = false
+    setIntrusion(false, nil)
     setVisible(false)
 end
 
 function HudController.init()
-    -- Botões de porta só em dispositivos de toque (5.11); no PC são as teclas A/D e os botões 3D
-    setTouchButtonsVisible(InputController.isTouchDevice())
-    InputController.touchModeChanged:Connect(setTouchButtonsVisible)
+    -- Botões de toque só em dispositivos de toque (5.11); no PC são as teclas e os objetos 3D
+    setTouchMode(InputController.isTouchDevice())
+    InputController.touchModeChanged:Connect(setTouchMode)
+    Overlay.changed:Connect(function()
+        applyTouchButtons()
+    end)
     hud.doorLeftButton.Activated:Connect(function()
         InputController.doorToggle:Fire(Enums.Side.Left)
     end)
@@ -203,11 +277,37 @@ function HudController.init()
     hud.tabletButton.Activated:Connect(function()
         InputController.tabletToggle:Fire()
     end)
+    hud.terminalButton.Activated:Connect(function()
+        InputController.terminalToggle:Fire()
+    end)
+    hud.manualButton.Activated:Connect(function()
+        InputController.notebookToggle:Fire()
+    end)
+    ClockGlitch.changed:Connect(function(text: string?)
+        if text then
+            hud.clock.Text = text
+        else
+            showClock()
+        end
+    end)
 
     Remotes.get(Enums.Remote.NightStarted).OnClientEvent:Connect(onNightStarted)
     Remotes.get(Enums.Remote.NightPhase).OnClientEvent:Connect(onNightPhase)
     Remotes.get(Enums.Remote.HourChanged).OnClientEvent:Connect(onHourChanged)
     Remotes.get(Enums.Remote.PowerChanged).OnClientEvent:Connect(onPowerChanged)
+    Remotes.get(Enums.Remote.FirewallChanged).OnClientEvent:Connect(onFirewallChanged)
+    Remotes.get(Enums.Remote.SystemCorrupted).OnClientEvent:Connect(function(payload: Types.SystemChangedPayload)
+        setSystems(payload.corrupted)
+    end)
+    Remotes.get(Enums.Remote.SystemRepaired).OnClientEvent:Connect(function(payload: Types.SystemChangedPayload)
+        setSystems(payload.corrupted)
+    end)
+    Remotes.get(Enums.Remote.IntrusionState).OnClientEvent:Connect(function(payload: Types.IntrusionStatePayload)
+        setIntrusion(payload.active, payload.remaining)
+    end)
+    Remotes.get(Enums.Remote.GeneratorUsed).OnClientEvent:Connect(function(payload: Types.GeneratorUsedPayload)
+        setGenerator(payload.usesLeft)
+    end)
     Remotes.get(Enums.Remote.NightWon).OnClientEvent:Connect(onNightWon)
     Remotes.get(Enums.Remote.Jumpscare).OnClientEvent:Connect(onJumpscare)
     Remotes.get(Enums.Remote.TabletState).OnClientEvent:Connect(onTabletState)

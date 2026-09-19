@@ -76,6 +76,29 @@ Enums.ServerStatus = table.freeze({
     Anomalous = "anomalous" :: "anomalous",
 })
 
+-- Tipo de linha no terminal (3.6): cor e som no cliente; "clear" limpa a tela
+Enums.EchoKind = table.freeze({
+    Ok = "ok" :: "ok",
+    Info = "info" :: "info",
+    Err = "err" :: "err",
+    Echo = "echo" :: "echo",
+    Clear = "clear" :: "clear",
+})
+
+-- Por que o firewall mudou: o cliente escolhe o som (vidro quebrando / restauração)
+Enums.FirewallCause = table.freeze({
+    Init = "init" :: "init",
+    Break = "break" :: "break",
+    Restore = "restore" :: "restore",
+})
+
+-- Telas cheias do cliente; só uma aberta por vez (Overlay.luau)
+Enums.Overlay = table.freeze({
+    Tablet = "tablet",
+    Terminal = "terminal",
+    Notebook = "notebook",
+})
+
 -- Cues de áudio (3.11). O asset real de cada um fica em GameConfig.Audio.ids.
 Enums.Cue = table.freeze({
     AmbientHum = "ambient_hum",

@@ -1,12 +1,13 @@
 --!strict
--- JumpscareController: coreografia do jumpscare e tela de game over (PLANEJAMENTO 3.8.1, 3.8.2, 3.10).
+-- JumpscareController: coreografia do jumpscare e tela de game over (PLANEJAMENTO 3.8, 3.10).
 -- O servidor já encerrou a sessão quando Jumpscare chega; tudo aqui é apresentação no cliente.
 -- Físicos: a câmera é forçada para a porta e o inimigo avança até encher a tela em 0.4s, com estática.
--- Hexágono (Fase 5) terá coreografia própria; até lá cai no caminho genérico (só estática).
+-- Hexágono: o ciano toma a tela a partir do centro, com estática, e "FIREWALL BREACHED" antes do game over.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -32,6 +33,12 @@ local MODEL_SIZE = Vector3.new(4, 4, 4)
 local COLOR_SQUARE = Color3.fromRGB(40, 90, 255)
 local COLOR_TRIANGLE = Color3.fromRGB(230, 40, 40)
 local COLOR_EYES = Color3.fromRGB(5, 5, 8)
+-- Hexágono (3.8.4)
+local HEX_EXPAND_SECONDS = 1.2
+local HEX_BREACH_AT_SECONDS = 1.6
+local HEX_FULL_SIZE = UDim2.fromScale(1.2, 1.2)
+local HEX_TRANSPARENCY_MIN = 0.1
+local HEX_TRANSPARENCY_MAX = 0.55
 
 local JumpscareController = {}
 
@@ -46,18 +53,28 @@ local token = 0 -- invalida coreografia pendente
 local model: Model? = nil
 local staticConn: RBXScriptConnection? = nil
 local lungeConn: RBXScriptConnection? = nil
+local hexConn: RBXScriptConnection? = nil
+local hexTween: Tween? = nil
 local buttonsArmed = false
 
-local function cleanup()
-    local staticConnection = staticConn
-    if staticConnection then
-        staticConnection:Disconnect()
-        staticConn = nil
+local function disconnect(connection: RBXScriptConnection?)
+    if connection then
+        connection:Disconnect()
     end
-    local lungeConnection = lungeConn
-    if lungeConnection then
-        lungeConnection:Disconnect()
-        lungeConn = nil
+end
+
+-- Para tudo o que anima durante o jumpscare (estática, avanço do modelo, ciano do Hexágono)
+local function stopEffects()
+    disconnect(staticConn)
+    staticConn = nil
+    disconnect(lungeConn)
+    lungeConn = nil
+    disconnect(hexConn)
+    hexConn = nil
+    local tween = hexTween
+    if tween then
+        tween:Cancel()
+        hexTween = nil
     end
     local current = model
     if current then
@@ -65,6 +82,12 @@ local function cleanup()
         model = nil
     end
     ui.static.Visible = false
+    ui.hexGrid.Visible = false
+    ui.breached.Visible = false
+end
+
+local function cleanup()
+    stopEffects()
     ui.panel.Visible = false
     ui.gui.Enabled = false
     buttonsArmed = false
@@ -124,27 +147,51 @@ local function lunge(target: Model, startCFrame: CFrame, endCFrame: CFrame)
         local eased = 1 - (1 - alpha) * (1 - alpha) -- ease-out: começa rápido, encosta devagar
         target:PivotTo(startCFrame:Lerp(endCFrame, eased))
         if alpha >= 1 then
-            local connection = lungeConn
-            if connection then
-                connection:Disconnect()
-                lungeConn = nil
-            end
+            disconnect(lungeConn)
+            lungeConn = nil
+        end
+    end)
+end
+
+-- Físicos (3.8.1, 3.8.2): a câmera é forçada a olhar para a porta; o inimigo sai da soleira até a tela
+local function physicalScare(enemy: Types.Enemy, side: Types.Side)
+    local sign = if side == Enums.Side.Left then -1 else 1
+    OfficeCamera.lockYaw(sign * GameConfig.Camera.maxYawDegrees)
+    local office = Workspace:WaitForChild(Enums.Office.Model)
+    local doorway = office
+        :WaitForChild(Enums.Office.Doors)
+        :WaitForChild(Enums.Office.DoorModel[side])
+        :WaitForChild(Enums.Office.SoundAnchor) :: BasePart
+    local endCFrame = OfficeCamera.getCFrame() * LUNGE_END_OFFSET * CFrame.Angles(0, math.pi, 0)
+    local startCFrame = CFrame.new(doorway.Position) * endCFrame.Rotation
+    local built = buildModel(enemy)
+    model = built
+    lunge(built, startCFrame, endCFrame)
+end
+
+-- Hexágono (3.8.4): não é um monstro entrando; o ciano toma a tela e termina em FIREWALL BREACHED
+local function hexagonScare(mine: number)
+    ui.hexGrid.Size = UDim2.fromScale(0, 0)
+    ui.hexGrid.Visible = true
+    local tween = TweenService:Create(
+        ui.hexGrid,
+        TweenInfo.new(HEX_EXPAND_SECONDS, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+        { Size = HEX_FULL_SIZE }
+    )
+    tween:Play()
+    hexTween = tween
+    hexConn = RunService.RenderStepped:Connect(function()
+        ui.hexGrid.BackgroundTransparency = rng:NextNumber(HEX_TRANSPARENCY_MIN, HEX_TRANSPARENCY_MAX)
+    end)
+    task.delay(HEX_BREACH_AT_SECONDS, function()
+        if mine == token then
+            ui.breached.Visible = true
         end
     end)
 end
 
 local function showGameOver(enemy: Types.Enemy)
-    local staticConnection = staticConn
-    if staticConnection then
-        staticConnection:Disconnect()
-        staticConn = nil
-    end
-    local current = model
-    if current then
-        current:Destroy()
-        model = nil
-    end
-    ui.static.Visible = false
+    stopEffects()
     ui.title.Text = string.format(Strings.EndScreens.criticalFailure, currentNight)
     ui.anomaly.Text = string.format(Strings.EndScreens.anomaly, Strings.EnemyName[enemy] or enemy)
     ui.panel.Visible = true
@@ -158,24 +205,12 @@ local function onJumpscare(payload: Types.JumpscarePayload)
     ui.gui.Enabled = true
 
     local enemy: Types.Enemy = payload.enemy -- anotado: o checador alarga o literal para string sem isto
-    local side: Types.Side? = if enemy == Enums.Enemy.Square
-        then Enums.Side.Left
-        elseif enemy == Enums.Enemy.Triangle then Enums.Side.Right
-        else nil
-    if side then
-        -- A câmera é forçada a olhar para a porta; o inimigo sai da soleira e avança até a tela
-        local sign = if side == Enums.Side.Left then -1 else 1
-        OfficeCamera.lockYaw(sign * GameConfig.Camera.maxYawDegrees)
-        local office = Workspace:WaitForChild(Enums.Office.Model)
-        local doorway = office
-            :WaitForChild(Enums.Office.Doors)
-            :WaitForChild(Enums.Office.DoorModel[side])
-            :WaitForChild(Enums.Office.SoundAnchor) :: BasePart
-        local endCFrame = OfficeCamera.getCFrame() * LUNGE_END_OFFSET * CFrame.Angles(0, math.pi, 0)
-        local startCFrame = CFrame.new(doorway.Position) * endCFrame.Rotation
-        local built = buildModel(enemy)
-        model = built
-        lunge(built, startCFrame, endCFrame)
+    if enemy == Enums.Enemy.Square then
+        physicalScare(enemy, Enums.Side.Left)
+    elseif enemy == Enums.Enemy.Triangle then
+        physicalScare(enemy, Enums.Side.Right)
+    elseif enemy == Enums.Enemy.Hexagon then
+        hexagonScare(mine)
     end
 
     startStatic()

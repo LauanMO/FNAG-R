@@ -1,7 +1,10 @@
 --!strict
 -- Strings: todos os textos do jogo (PLANEJAMENTO Apêndice B). Textos em português; comandos em inglês.
--- Fase 1: boot, menu, HUD e telas de fim. Terminal, manual, tutorial e listas de palavras entram nas Fases 5 e 7.
+-- Números de balanceamento citados nos textos vêm do GameConfig, para o manual nunca mentir.
+-- Tutorial e listas de palavras do minigame entram nas Fases 5b e 7.
 -- Nenhum módulo escreve texto de jogo inline (Apêndice C.8).
+
+local GameConfig = require(script.Parent.GameConfig)
 
 local Strings = {}
 
@@ -42,6 +45,7 @@ Strings.HUD = table.freeze({
     tabletOffline = "TABLET OFFLINE — fix camera",
     doorLeftButton = "◀ PORTA",
     doorRightButton = "PORTA ▶",
+    glitchChars = "!@#$%^&*?<>/\\|", -- clock_glitch: 8 destes, trocando a cada 0.18s
 })
 
 -- B.7
@@ -81,6 +85,125 @@ Strings.Tablet = table.freeze({
     anomalousTraffic = "TRÁFEGO ANÔMALO",
     footerFirewall = "FIREWALL: %s",
     footerPower = "⚡ %d%%",
+})
+
+-- B.1
+Strings.Terminal = table.freeze({
+    boot1 = "GEOMETRY OS v1.0 ONLINE...",
+    boot2 = "Sistemas estabilizados. Aguardando comando.",
+    prompt = "root@office:~$",
+    send = "ENVIAR",
+    close = "FECHAR",
+    hudButton = "TERMINAL",
+    helpPrefix = "Comandos: ",
+    notFound = "command not found",
+    repaired = "[OK] %s restored.",
+    notCorrupted = "[WARN] %s is not currently corrupted.",
+    puzzleOpening = "Opening logic-gate repair console...",
+    firewallFull = "Firewall already at maximum.",
+    consoleCooldown = "Console em cooldown. Aguarde.",
+    generatorStart = "Iniciando protocolo de override do gerador...",
+    generatorOk = "[OK] Gerador forçado. Bateria restaurada para %d%%.",
+    generatorPunished = "[AVISO] Sobrecarga detectada! Bateria descarregada para %d%%.",
+    generatorSpent = "[ERRO] Override já utilizado nesta noite.",
+    statusFirewall = "Firewall: %d/%d",
+    statusPower = "Energia: %d%%",
+    statusSystemsOk = "Sistemas: ALL OK",
+    statusSystemsHeader = "Sistemas:",
+    statusSystemLine = "  [!] %s",
+    statusNodesOk = "Nodes: OK",
+    statusNodesDead = "Nodes mortos: %s",
+    statusGeneratorLeft = "Gerador: %d uso",
+    statusGeneratorUsed = "Gerador: usado",
+    alertCorrupted = "[ALERT] %s corrupted by HEXAGON",
+    alertLayerLost = "[ALERT] Firewall layer lost. %d/%d remaining.",
+    alertIntrusion = "[CRITICAL] INTRUSION IN PROGRESS. Restore firewall.",
+    alertNodeDestroyed = "[ALERT] Node %s destroyed by CIRCLE.",
+})
+
+-- B.2
+Strings.Puzzle = table.freeze({
+    title = "PAINEL DE CIRCUITO LÓGICO — RESTAURAÇÃO DE FIREWALL",
+    instruction = "Identifique a porta lógica que gera a tabela-verdade abaixo.",
+    header = "A | B | OUT",
+    row = "%d | %d | %d",
+    option = "%s(a, b)",
+    correct = "[OK] %s bate com a tabela. +1 camada de Firewall.",
+    wrong = "[ERR] %s não bate. Punição: -%d%% energia. Tente novamente.",
+    wrongNoPenalty = "[ERR] %s não bate. Tente novamente.", -- Noite 0 (3.12)
+    cancel = "CANCELAR ✕",
+})
+
+-- B.3. Cada página: título e parágrafos.
+local P = GameConfig.Power
+Strings.Manual = table.freeze({
+    header = "MANUAL DE PROCEDIMENTOS — Vol. 1",
+    prev = "◀ ANTERIOR",
+    nextPage = "PRÓXIMA ▶",
+    pageOf = "%d / %d",
+    close = "FECHAR",
+    hudButton = "MANUAL",
+    pages = table.freeze({
+        table.freeze({
+            title = "PROCEDIMENTOS DE EMERGÊNCIA",
+            body = table.freeze({
+                "Se algum sistema for corrompido pelo vírus, abra o TERMINAL e digite o comando exato da página "
+                    .. "correspondente. Comandos só funcionam enquanto o sistema estiver corrompido.",
+                "O sistema informa corrupções no painel superior ([!] nome_do_sistema).",
+            }),
+        }),
+        table.freeze({
+            title = "CÓDIGOS DE REPARO — I",
+            body = table.freeze({
+                "fix camera — Recompila o feed da câmera principal. (camera_offline)",
+                "unjam door_left — Libera o motor travado da porta esquerda. (door_left_jammed)",
+                "unjam door_right — Libera o motor travado da porta direita. (door_right_jammed)",
+            }),
+        }),
+        table.freeze({
+            title = "CÓDIGOS DE REPARO — II",
+            body = table.freeze({
+                "sync clock — Ressincroniza o cronômetro do sistema. (clock_glitch)",
+                "seal power_leak — Fecha o vazamento no gerador. (power_leak)",
+                "Nota: uma porta travada congela no estado em que está. Se estava fechada, continua consumindo energia.",
+            }),
+        }),
+        table.freeze({
+            title = "FIREWALL — RESTAURAÇÃO",
+            body = table.freeze({
+                string.format(
+                    "Para subir +1 camada de Firewall, digite restore_firewall no Terminal e resolva o circuito "
+                        .. "lógico exibido. Erros custam %d%% de energia.",
+                    P.puzzlePenalty
+                ),
+                string.format(
+                    "Se o Firewall chegar a zero, uma INTRUSÃO começa. Você tem %d segundos para restaurar uma camada.",
+                    GameConfig.Hexagon.intrusionSeconds
+                ),
+            }),
+        }),
+        table.freeze({
+            title = "PROTOCOLO DE BLACKOUT",
+            body = table.freeze({
+                string.format(
+                    "Quando a energia zera, as portas abrem e as luzes apagam. O tablet e o terminal funcionam por "
+                        .. "%d segundos na bateria interna.",
+                    GameConfig.Blackout.tabletBatterySeconds
+                ),
+                string.format(
+                    "Comando de emergência: reset generator — restaura a energia para %d%%. Uso único por noite.",
+                    P.generatorResetTo
+                ),
+                string.format(
+                    "ATENÇÃO: usado com a energia acima de %d%%, o sistema entende como sobrecarga e REDUZ a energia "
+                        .. "para %d%%.",
+                    P.generatorResetTo,
+                    P.generatorResetTo
+                ),
+                "O gerador não fecha as portas. Feche-as você.",
+            }),
+        }),
+    }),
 })
 
 -- Nomes dos nós no mapa (B.5). cast justificado: indexado por Enums.Node em runtime

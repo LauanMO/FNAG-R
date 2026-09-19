@@ -9,10 +9,13 @@ local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
 local Enums = require(Shared.Enums)
 local Remotes = require(Shared.Remotes)
+local LogicGates = require(Shared.LogicGates)
 local Types = require(Shared.Types)
 local NightSession = require(script.Parent.NightSession)
 local RateLimiter = require(script.Parent.RateLimiter)
 local RadarService = require(script.Parent.RadarService)
+local FirewallService = require(script.Parent.FirewallService)
+local TerminalService = require(script.Parent.TerminalService)
 
 local SAVE_VERSION = 1
 
@@ -22,6 +25,7 @@ local sessions: { [Player]: NightSession.NightSession } = {}
 local saves: { [Player]: Types.SaveData } = {}
 local toggleDoorLimiter = RateLimiter.new(GameConfig.Doors.maxTogglesPerSecond)
 local tabletLimiter = RateLimiter.new(GameConfig.Tablet.maxTogglesPerSecond)
+local terminalLimiter = RateLimiter.new(GameConfig.Terminal.maxTogglesPerSecond)
 
 local function log(...: any)
     if GameConfig.Debug.logSession then
@@ -115,6 +119,7 @@ local function onStartNight(player: Player, payload: unknown)
     session.ended:Connect(function(result, enemy)
         onSessionEnded(player, night, result, enemy)
     end)
+    FirewallService.attach(session) -- Hexágono, firewall e puzzle (Fase 5a)
     log(`{player.Name} começou a noite {night}`)
     session:start()
 end
@@ -164,6 +169,55 @@ local function onRequestPing(player: Player)
     end
 end
 
+-- Lê um booleano `open` do payload do cliente (SetTabletOpen, SetTerminalOpen)
+local function readOpen(payload: unknown): boolean?
+    if typeof(payload) ~= "table" then
+        return nil
+    end
+    -- cast justificado: o payload vem do cliente e é validado campo a campo
+    local open = (payload :: any).open
+    return if typeof(open) == "boolean" then open else nil
+end
+
+-- SetTerminalOpen { open } (5.6): a sessão decide se o terminal está disponível
+local function onSetTerminalOpen(player: Player, payload: unknown)
+    local session = sessions[player]
+    local open = readOpen(payload)
+    if not session or open == nil or not terminalLimiter:allow(player) then
+        return
+    end
+    session:setTerminal(open)
+end
+
+-- TerminalCommand { text }: toda a validação fica no TerminalService (5.6, 5.9)
+local function onTerminalCommand(player: Player, payload: unknown)
+    local session = sessions[player]
+    if session then
+        TerminalService.handle(session, player, payload)
+    end
+end
+
+-- PuzzlePick { gate }: nome de porta lógica conhecido; o FirewallService confere se está entre as opções
+local function onPuzzlePick(player: Player, payload: unknown)
+    local session = sessions[player]
+    if not session or typeof(payload) ~= "table" then
+        return
+    end
+    -- cast justificado: o payload vem do cliente e é validado campo a campo
+    local gate = (payload :: any).gate
+    if typeof(gate) ~= "string" or not LogicGates.isGate(gate) then
+        return
+    end
+    FirewallService.puzzlePick(session, gate)
+end
+
+local function onPuzzleCancel(player: Player)
+    local session = sessions[player]
+    if session then
+        FirewallService.cancelPuzzle(session)
+    end
+end
+
 local function onPlayerAdded(player: Player)
     saves[player] = defaultSave()
     sendSave(player)
@@ -174,6 +228,8 @@ local function onPlayerRemoving(player: Player)
     saves[player] = nil
     toggleDoorLimiter:forget(player)
     tabletLimiter:forget(player)
+    terminalLimiter:forget(player)
+    TerminalService.forget(player)
 end
 
 function NightService.init()
@@ -191,6 +247,10 @@ function NightService.init()
     Remotes.get(Enums.Remote.ToggleDoor).OnServerEvent:Connect(onToggleDoor)
     Remotes.get(Enums.Remote.SetTabletOpen).OnServerEvent:Connect(onSetTabletOpen)
     Remotes.get(Enums.Remote.RequestPing).OnServerEvent:Connect(onRequestPing)
+    Remotes.get(Enums.Remote.SetTerminalOpen).OnServerEvent:Connect(onSetTerminalOpen)
+    Remotes.get(Enums.Remote.TerminalCommand).OnServerEvent:Connect(onTerminalCommand)
+    Remotes.get(Enums.Remote.PuzzlePick).OnServerEvent:Connect(onPuzzlePick)
+    Remotes.get(Enums.Remote.PuzzleCancel).OnServerEvent:Connect(onPuzzleCancel)
     Remotes.get(Enums.Remote.ReturnToMenu).OnServerEvent:Connect(function(player: Player)
         endSession(player)
     end)

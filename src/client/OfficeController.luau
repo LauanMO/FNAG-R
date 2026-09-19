@@ -13,6 +13,7 @@ local Enums = require(Shared:WaitForChild("Enums"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
 local Strings = require(Shared:WaitForChild("Strings"))
 local Types = require(Shared:WaitForChild("Types"))
+local ClockGlitch = require(script.Parent.ClockGlitch)
 
 -- Apresentação: cor da luminária apagada e comportamento do flicker abaixo de 10% (3.4)
 local FIXTURE_OFF_COLOR = Color3.fromRGB(22, 22, 24)
@@ -35,6 +36,7 @@ local wallClockLabel: TextLabel? = nil
 local tweens: { Tween } = {}
 local flickerConn: RBXScriptConnection? = nil
 local blackout = false
+local currentHour = 0
 local rng = Random.new() -- apresentação, não lógica de jogo (Apêndice C.6)
 
 local function cancelTweens()
@@ -88,12 +90,22 @@ local function setWallClock(text: string, visible: boolean)
     end
 end
 
+-- Hora no relógio de parede, a menos que o glitch esteja embaralhando (3.4) ou seja blackout (3.9)
+local function showWallClock()
+    if blackout then
+        setWallClock("", false)
+    elseif not ClockGlitch.isActive() then
+        setWallClock(Strings.clock(currentHour), true)
+    end
+end
+
 local function onNightStarted()
     blackout = false
     setFlicker(false)
     cancelTweens()
     setScale(1)
-    setWallClock(Strings.clock(0), true)
+    currentHour = 0
+    showWallClock()
 end
 
 local function onNightPhase(payload: Types.NightPhasePayload)
@@ -106,14 +118,13 @@ local function onNightPhase(payload: Types.NightPhasePayload)
         -- saída do blackout (reset generator, Fase 5)
         blackout = false
         tweenLights(RESTORE_SECONDS, 1)
-        setWallClock(Strings.clock(0), true)
+        showWallClock()
     end
 end
 
 local function onHourChanged(payload: Types.HourChangedPayload)
-    if not blackout then
-        setWallClock(Strings.clock(payload.hour), true)
-    end
+    currentHour = payload.hour
+    showWallClock()
 end
 
 local function onPowerChanged(payload: Types.PowerChangedPayload)
@@ -141,6 +152,16 @@ function OfficeController.init()
     Remotes.get(Enums.Remote.NightPhase).OnClientEvent:Connect(onNightPhase)
     Remotes.get(Enums.Remote.HourChanged).OnClientEvent:Connect(onHourChanged)
     Remotes.get(Enums.Remote.PowerChanged).OnClientEvent:Connect(onPowerChanged)
+    ClockGlitch.changed:Connect(function(text: string?)
+        if blackout then
+            return
+        end
+        if text then
+            setWallClock(text, true)
+        else
+            showWallClock()
+        end
+    end)
 end
 
 return OfficeController

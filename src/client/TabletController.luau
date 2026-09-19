@@ -19,6 +19,7 @@ local TabletGui = require(script.Parent.ui.TabletGui)
 local AudioController = require(script.Parent.AudioController)
 local HudController = require(script.Parent.HudController)
 local InputController = require(script.Parent.InputController)
+local Overlay = require(script.Parent.Overlay)
 
 -- Apresentação
 local BLINK_SECONDS = 0.35 -- nós com anomalia piscam enquanto o resultado está na tela
@@ -155,6 +156,7 @@ local function setOpenLocal(value: boolean, silent: boolean)
     end
     open = value
     ui.gui.Enabled = value
+    Overlay.set(Enums.Overlay.Tablet, value)
     setScanline(value)
     if not silent then
         AudioController.play(if value then Enums.Cue.TabletOpen else Enums.Cue.TabletClose)
@@ -294,8 +296,8 @@ function TabletController.init()
     InputController.tabletToggle:Connect(function()
         requestOpen(not open)
     end)
-    InputController.overlayClose:Connect(function()
-        if open then
+    Overlay.closeRequested:Connect(function(name: string)
+        if name == Enums.Overlay.Tablet and open then
             requestOpen(false)
         end
     end)

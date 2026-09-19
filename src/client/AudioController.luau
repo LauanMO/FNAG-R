@@ -165,6 +165,27 @@ function AudioController.init()
     Remotes.get(Enums.Remote.NightStarted).OnClientEvent:Connect(function()
         duckToken += 1
         tweenDuckedGroups(DUCK_ATTACK_SECONDS, 1)
+        AudioController.setLoop(Enums.Cue.IntrusionAlarm, false)
+    end)
+    Remotes.get(Enums.Remote.NightPhase).OnClientEvent:Connect(function(payload: Types.NightPhasePayload)
+        if payload.phase == Enums.Phase.Won or payload.phase == Enums.Phase.Lost then
+            AudioController.setLoop(Enums.Cue.IntrusionAlarm, false)
+        end
+    end)
+    -- 3.8.4: vidro digital a cada camada rompida; outro som quando uma camada volta
+    Remotes.get(Enums.Remote.FirewallChanged).OnClientEvent:Connect(function(payload: Types.FirewallChangedPayload)
+        if payload.cause == Enums.FirewallCause.Break then
+            AudioController.play(Enums.Cue.FirewallBreak)
+        elseif payload.cause == Enums.FirewallCause.Restore then
+            AudioController.play(Enums.Cue.FirewallRestore)
+        end
+    end)
+    -- Alarme de intrusão: loop ligado e desligado pelo estado, nunca disparado repetidamente (5.13)
+    Remotes.get(Enums.Remote.IntrusionState).OnClientEvent:Connect(function(payload: Types.IntrusionStatePayload)
+        AudioController.setLoop(Enums.Cue.IntrusionAlarm, payload.active)
+    end)
+    Remotes.get(Enums.Remote.GeneratorUsed).OnClientEvent:Connect(function()
+        AudioController.play(Enums.Cue.GeneratorReset)
     end)
 end
 

@@ -1,5 +1,6 @@
 --!strict
--- JumpscareGui: overlay de estática durante o jumpscare e tela de game over (PLANEJAMENTO 3.10 / 5.12 / B.7).
+-- JumpscareGui: overlays do jumpscare e tela de game over (PLANEJAMENTO 3.8, 3.10, 5.12, B.7).
+-- Estática (todos), grade ciana e "FIREWALL BREACHED" (Hexágono), e o painel de falha crítica.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -9,7 +10,9 @@ local UiKit = require(script.Parent.UiKit)
 
 export type Jumpscare = {
     gui: ScreenGui,
+    hexGrid: Frame, -- Hexágono: a tela é tomada pelo ciano a partir do centro
     static: Frame,
+    breached: TextLabel,
     panel: Frame,
     title: TextLabel,
     anomaly: TextLabel,
@@ -26,6 +29,18 @@ function JumpscareGui.build(parent: Instance): Jumpscare
     local C = UiKit.Color
     local gui = UiKit.screenGui("JumpscareGui", 40, true)
 
+    -- Hexágono (3.8.4): o JumpscareController cresce este quadro do centro até cobrir a tela
+    local hexGrid = UiKit.frame({
+        name = "HexGrid",
+        parent = gui,
+        position = UDim2.fromScale(0.5, 0.5),
+        anchor = Vector2.new(0.5, 0.5),
+        size = UDim2.fromScale(0, 0),
+        bg = C.hacker,
+        visible = false,
+        zIndex = 1,
+    })
+
     -- Estática: o JumpscareController troca a cor e a transparência a cada frame
     local static = UiKit.frame({
         name = "Static",
@@ -34,6 +49,20 @@ function JumpscareGui.build(parent: Instance): Jumpscare
         size = UDim2.fromScale(1, 1),
         bg = C.dim,
         visible = false,
+        zIndex = 2,
+    })
+
+    local breached = UiKit.label({
+        name = "Breached",
+        parent = gui,
+        position = UDim2.fromScale(0.5, 0.5),
+        anchor = Vector2.new(0.5, 0.5),
+        size = UDim2.fromScale(0.9, 0.14),
+        text = Strings.EndScreens.firewallBreached,
+        color = C.hacker,
+        visible = false,
+        zIndex = 3,
+        maxTextSize = 72,
     })
 
     local panel = UiKit.frame({
@@ -43,7 +72,7 @@ function JumpscareGui.build(parent: Instance): Jumpscare
         size = UDim2.fromScale(1, 1),
         bg = C.bg,
         visible = false,
-        zIndex = 2,
+        zIndex = 4,
     })
     local title = UiKit.label({
         name = "Title",
@@ -89,7 +118,17 @@ function JumpscareGui.build(parent: Instance): Jumpscare
     })
 
     gui.Parent = parent
-    return { gui = gui, static = static, panel = panel, title = title, anomaly = anomaly, retry = retry, menu = menu }
+    return {
+        gui = gui,
+        hexGrid = hexGrid,
+        static = static,
+        breached = breached,
+        panel = panel,
+        title = title,
+        anomaly = anomaly,
+        retry = retry,
+        menu = menu,
+    }
 end
 
 return JumpscareGui

@@ -59,6 +59,7 @@ local GameConfig = {
         tickSeconds = 25,
         maxLayers = 5,
         intrusionSeconds = 20,
+        intrusionTickSeconds = 1, -- resolução da contagem da intrusão
         restoreCooldownSeconds = 10,
         systems = { "camera_offline", "door_left_jammed", "door_right_jammed", "clock_glitch", "power_leak" },
     },
@@ -68,6 +69,12 @@ local GameConfig = {
     },
     Terminal = {
         maxCommandsPerSecond = 5,
+        maxInputLength = 64, -- TerminalCommand acima disso é ignorado (5.6)
+        maxTogglesPerSecond = 10, -- rate limit de SetTerminalOpen (5.9)
+    },
+    Puzzle = {
+        closeAfterCorrectSeconds = 1.2, -- painel fecha depois do acerto (3.8.4)
+        newTableAfterWrongSeconds = 1.4, -- nova tabela depois do erro (3.8.4)
     },
     -- Níveis por noite (7.4). Índice = noite (0 = tutorial, 1-7). "custom" é montada em runtime na Fase 7.
     Nights = {
@@ -97,6 +104,17 @@ local GameConfig = {
             tablet_close = "rbxassetid://15675032796", -- Roblox_UI_Small_Click (oficial)
             ping_send = "rbxassetid://9125981410", -- Spaceship Sonar Low And High Pitch Tonal
             ping_result = "rbxassetid://9117060349", -- Nasa Transmission Beep 2
+            terminal_open = "rbxassetid://9117060347", -- Nasa Transmission Beep 1
+            terminal_key = "rbxassetid://15675032796", -- Roblox_UI_Small_Click (oficial)
+            terminal_ok = "rbxassetid://15675059323", -- Roblox_UI_Bright_Click (oficial)
+            terminal_err = "rbxassetid://9113085764", -- Alarm Buzzer 5
+            firewall_break = "rbxassetid://9126001142", -- Static Squeaky Bursts Sharp Electric Charge
+            firewall_restore = "rbxassetid://9119816522", -- Synth Power Up Multi Tone Wind Ups Rise 3
+            intrusion_alarm = "rbxassetid://9113086365", -- Alarm Buzzer 1 (loop)
+            puzzle_ok = "rbxassetid://15675059323", -- Roblox_UI_Bright_Click (oficial)
+            puzzle_err = "rbxassetid://9113085764", -- Alarm Buzzer 5
+            generator_reset = "rbxassetid://9117882503", -- Power Up Accelerating Motors 1
+            jumpscare_hexagon = "rbxassetid://9126001417", -- Static Squeaky Bursts Sharp Electric Charge
         } :: { [string]: string },
         arrivalDuckAmount = 0.6,
         arrivalDuckSeconds = 1.5,
@@ -107,7 +125,8 @@ local GameConfig = {
         deterministicSeed = nil :: number?, -- número = RNG reproduzível. Só em Studio.
         logAI = true, -- imprime cada sorteio das IAs (Fase 3)
         logSession = true, -- imprime boot, fases e fim de noite no Output
-        deadCamerasAtStart = {CAM1} :: { string }, -- ex.: { "CAM1" } para testar "em nó cego". Só em Studio.
+        deadCamerasAtStart = { "CAM1" } :: { string }, -- ex.: { "CAM1" } para testar "em nó cego". Só em Studio.
+        levelOverrides = {} :: { [string]: number }, -- ex.: { hexagon = 20 } para testar a Fase 5. Só em Studio.
     },
 }
 
