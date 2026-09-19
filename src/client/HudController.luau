@@ -28,6 +28,8 @@ local MESSAGE_SECONDS = 2.5
 local PULSE_SECONDS = 0.6 -- barra de energia pulsando abaixo do aviso (3.2)
 local PULSE_TRANSPARENCY = 0.6
 local FIREWALL_FLASH_SECONDS = 0.4 -- o firewall pisca a cada camada rompida (3.8.4)
+local VIRUS_BLINK_SECONDS = 0.35 -- banner de vírus piscando (3.8.3)
+local VIRUS_BLINK_TRANSPARENCY = 0.7
 local SYSTEM_LINE_HEIGHT = 0.19 -- fração da lista; cabem os 5 sistemas
 local POWER_SOURCE_SLOTS = 5 -- base + 2 portas + tablet + vazamento
 local BAR_FULL = "▮"
@@ -44,6 +46,7 @@ local dawn = DawnGui.build(playerGui)
 local dawnToken = 0 -- invalida uma sequência de amanhecer pendente
 local messageToken = 0
 local firewallToken = 0
+local virusTween: Tween? = nil
 local pulseTween: Tween? = nil
 local touchMode = false
 local currentHour = 0
@@ -142,6 +145,27 @@ local function setIntrusion(active: boolean, remaining: number?)
     end
 end
 
+-- Círculo (3.8.3): banner piscando + barra do fusível. Some quando o terminal abre (vira minigame)
+-- ou quando o fusível acaba.
+local function setVirusAlert(active: boolean, remaining: number?)
+    hud.virusBanner.Visible = active
+    hud.virusBar.Visible = active
+    if active and remaining then
+        hud.virusFill.Size = UDim2.fromScale(math.clamp(remaining / GameConfig.Circle.alertFuseSeconds, 0, 1), 1)
+    end
+    local current = virusTween
+    if active and not current then
+        local info = TweenInfo.new(VIRUS_BLINK_SECONDS, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1, true)
+        local tween = TweenService:Create(hud.virusBanner, info, { TextTransparency = VIRUS_BLINK_TRANSPARENCY })
+        tween:Play()
+        virusTween = tween
+    elseif not active and current then
+        current:Cancel()
+        virusTween = nil
+        hud.virusBanner.TextTransparency = 0
+    end
+end
+
 -- Mensagem curta no centro da tela; some sozinha
 function HudController.showMessage(text: string)
     messageToken += 1
@@ -167,6 +191,7 @@ local function onNightStarted(payload: Types.NightStartedPayload)
     hud.bootOverlay.Visible = true
     setSystems({})
     setIntrusion(false, nil)
+    setVirusAlert(false, nil)
     setGenerator(GameConfig.Power.generatorUsesPerNight)
     setDoorButtonsEnabled(true)
     setVisible(true)
@@ -258,6 +283,7 @@ local function onJumpscare()
     setPulse(false)
     hud.message.Visible = false
     setIntrusion(false, nil)
+    setVirusAlert(false, nil)
     setVisible(false)
 end
 
@@ -304,6 +330,9 @@ function HudController.init()
     end)
     Remotes.get(Enums.Remote.IntrusionState).OnClientEvent:Connect(function(payload: Types.IntrusionStatePayload)
         setIntrusion(payload.active, payload.remaining)
+    end)
+    Remotes.get(Enums.Remote.VirusAlert).OnClientEvent:Connect(function(payload: Types.VirusAlertPayload)
+        setVirusAlert(payload.active, payload.remaining)
     end)
     Remotes.get(Enums.Remote.GeneratorUsed).OnClientEvent:Connect(function(payload: Types.GeneratorUsedPayload)
         setGenerator(payload.usesLeft)

@@ -46,7 +46,8 @@ function RadarService.scan(session: Session): Types.PingResultPayload
             else Enums.NodeState.Clear
     end
 
-    local serverStatus: Types.ServerStatus = if s.virusAlert
+    -- CAM 4 (3.5): tráfego anômalo enquanto o vírus do Círculo está pendente, em alerta ou em minigame
+    local serverStatus: Types.ServerStatus = if s.virusAlert or s.minigame
         then Enums.ServerStatus.Anomalous
         else Enums.ServerStatus.Ok
     return { nodes = nodes, anomalies = anomalies, blind = blind, serverStatus = serverStatus }

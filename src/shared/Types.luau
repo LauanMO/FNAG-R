@@ -89,6 +89,7 @@ export type SetTabletOpenPayload = { open: boolean }
 export type SetTerminalOpenPayload = { open: boolean }
 export type TerminalCommandPayload = { text: string }
 export type PuzzlePickPayload = { gate: string }
+export type MinigamePickPayload = { index: number }
 
 -- Servidor → Cliente
 export type SaveLoadedPayload = { save: SaveData }
@@ -116,6 +117,9 @@ export type TerminalPalettePayload = { commands: { string } }
 export type PuzzleStartPayload = { truthTable: { { number } }, options: { string } }
 export type PuzzleResultPayload = { correct: boolean, gate: string, layers: number, penalty: number }
 export type GeneratorUsedPayload = { punished: boolean, power: number, usesLeft: number }
+export type VirusAlertPayload = { active: boolean, remaining: number? }
+export type MinigameStartPayload = { words: { string }, seconds: number } -- seconds = tempo que resta
+export type MinigameResultPayload = { success: boolean, cameraKilled: string?, timeout: boolean }
 export type BlackoutStartedPayload = { tabletBatterySeconds: number }
 export type NightWonPayload = { night: number, nextNight: number }
 export type JumpscarePayload = { enemy: Enemy }

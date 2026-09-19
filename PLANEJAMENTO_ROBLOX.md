@@ -1045,6 +1045,8 @@ local GameConfig = {
         alertFuseSeconds = 30,
         minigameSeconds = 15,
         minigameWordCount = 9,
+        fuseTickSeconds = 1,
+        minigameTickSeconds = 1,
     },
     Hexagon = {
         tickSeconds = 25,
@@ -1243,7 +1245,7 @@ Todos são `RemoteEvent`, criados em `ReplicatedStorage/Remotes` por `Remotes.lu
 | `EnemyVisual` | `{ side, visible: boolean }` | Silhueta na porta |
 | `VirusAlert` | `{ active: boolean, remaining: number? }` | Círculo |
 | `MinigameStart` | `{ words: {string}, seconds }` | Terminal aberto com alerta |
-| `MinigameResult` | `{ success, cameraKilled: string? }` | |
+| `MinigameResult` | `{ success, cameraKilled: string?, timeout: boolean }` | O terminal fecha em seguida, acertando ou errando |
 | `CameraDead` | `{ camera }` | Também por fusível |
 | `FirewallChanged` | `{ layers, max, cause: "init"\|"break"\|"restore" }` | `cause` escolhe o som no cliente |
 | `SystemCorrupted` | `{ system, corrupted: {string} }` | `corrupted` = lista completa (o cliente redesenha tudo) |
@@ -1319,6 +1321,8 @@ Registrado na sessão com `scheduler:every("ai_square", cfg.tickSeconds, functio
 **Implementação:** `PatrolAI.new(host, name, cfg, level)` recebe a sessão pela interface estrutural `Types.AIHost` (`rng`, `state`, `fireCue`, `setEnemyVisual`, `lose`, `inDawnGrace`) em vez do tipo `NightSession` — evita require circular e permite testar a IA com um host falso. O tick checa `inDawnGrace()` antes de sortear (3.1). A sessão registra as tarefas na ordem Quadrado → Triângulo; com `Debug.deterministicSeed` fixo, a sequência de sorteios é reproduzível.
 
 **`CircleAI`:** `tick()` → se `level > 0`, sorteia; se passa e não há `virusAlert` e `not terminalOpen`, cria `virusAlert = { remaining = fuse }` e dispara `VirusAlert`. Uma tarefa `circle_fuse` (1s) decrementa `remaining`; em 0 → `RadarService:killNextCamera()` e limpa o alerta. Quando o cliente abre o terminal com alerta ativo, `MinigameService:start(session)`.
+
+**Implementação (5b):** `CircleAI.new(level, rng, canAct, attack)` não conhece a sessão; `MinigameService.attach` cria o Círculo e registra o tick por `session:addAITask`, como o Hexágono. Ao abrir o terminal, o `NightService` chama `MinigameService.onTerminalOpened`: o alerta vira minigame (o alarme e o fusível param) e o `virusAlert` sai do estado. O relógio do minigame continua com o terminal fechado; reabrir reenvia `MinigameStart` com o tempo que resta.
 
 **`HexagonAI`:** `tick()` → sorteia; se passa → `FirewallService:breakLayer(session)`, que decrementa, sorteia um sistema íntegro, aplica (`corrupted[sys] = true` + efeito colateral: `doors.left.jammed = true`, etc.), e se `layers == 0` inicia `intrusionRemaining = 20` com tarefa `intrusion` (1s). `restoreLayer()` cancela a intrusão.
 
@@ -1544,15 +1548,17 @@ Maior fase. Dividir em 5a (Terminal + Manual + Hexágono + Puzzle) e 5b (Círcul
 - [x] `reset generator`: 1× por noite, punição, saída do blackout (portas ficam abertas).
 
 **5b:**
-- [ ] `CircleAI` com d20, alerta, fusível de 30s, CAM4 pulsando.
-- [ ] Minigame no terminal (prioridade sobre o prompt), 9 palavras, timer de 15s, resultado.
-- [ ] `RadarService:killNextCamera()` com a ordem do config.
-- [ ] Listas de palavras no `Strings` (Apêndice B), com pelo menos 20 normais e 15 de erro.
+- [x] `CircleAI` com d20, alerta, fusível de 30s, CAM4 pulsando (no tablet, mesmo sem ping).
+- [x] Minigame no terminal (prioridade sobre o prompt, que fica cinza e bloqueado), 9 palavras, timer de 15s, resultado.
+- [x] `RadarService:killNextCamera()` com a ordem do config.
+- [x] Listas de palavras no `Strings` (Apêndice B), com 20 normais e 15 de erro.
 
 **Aceite 5a:** cenário 4.3 reproduzível: jam da porta direita → manual → `unjam door_right` → porta fecha → rebate. Cenário 4.8: intrusão abortada. `reset generator` acima de 50% pune; em blackout salva mas não fecha as portas.
 
 > Status 19/09/2026: 5a implementada; aceite no Studio pendente. Notas: tablet, terminal e manual são telas exclusivas (`Overlay.luau`); com qualquer uma aberta as portas não respondem. `Debug.levelOverrides = { hexagon = 20 }` faz o Hexágono agir em todo tick para testar na Noite 1. O jumpscare do Hexágono é o ciano tomando a tela a partir do centro, com estática e `FIREWALL BREACHED`; a grade hexagonal propriamente dita fica para a Fase 6.
 **Aceite 5b:** cenário 4.4: alerta com tablet aberto, minigame, acerto e erro (câmera morre e o ping passa a contar "em nó cego").
+
+> Status 19/09/2026: 5b implementada; aceite no Studio pendente. `Debug.levelOverrides = { circle = 20 }` faz o Círculo tentar em todo tick para testar na Noite 1.
 
 ### Fase 6 — Áudio completo, jumpscares finais, polimento visual
 
@@ -2018,4 +2024,4 @@ Falas da Unidade de Assistência de Debug. As quatro primeiras são as originais
 
 ---
 
-*Fim do documento. Próxima ação: validar a Fase 5a no Studio (aceite da seção 6: cenários 4.3, 4.5, 4.6 e 4.8); depois, Fase 5b.*
+*Fim do documento. Próxima ação: validar a Fase 5b no Studio (aceite da seção 6: cenário 4.4 e as duas variantes); depois, Fase 6.*

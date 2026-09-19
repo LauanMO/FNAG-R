@@ -121,6 +121,57 @@ Strings.Terminal = table.freeze({
     alertNodeDestroyed = "[ALERT] Node %s destroyed by CIRCLE.",
 })
 
+-- B.1: minigame de sintaxe do Círculo. Regra das listas: palavras normais parecem nomes de módulo de
+-- sistema; as infectadas misturam vocabulário de sistema com algo orgânico/perturbador. Nunca deixe uma
+-- infectada ser plausível como sistema (Eye_Tracker está no limite, de propósito).
+Strings.Minigame = table.freeze({
+    title = "SISTEMA CORROMPIDO. SELECIONE A ANOMALIA:",
+    timer = "%ds",
+    ok = "[OK] Vírus expurgado. Sistemas nominais.",
+    err = "[ERR] Sintaxe válida detectada. Node de vídeo destruído.",
+    timeout = "[ERR] Tempo esgotado. O vírus destruiu um node de vídeo.",
+    blocked = "[bloqueado — resolva a anomalia]",
+    normalWords = table.freeze({
+        "Function_Door",
+        "Central_Connection",
+        "Terminal_Overdrive",
+        "System_Boot",
+        "Camera_Feed",
+        "Audio_Link",
+        "Security_Breach",
+        "Power_Grid",
+        "Ventilation_Control",
+        "Mainframe_Access",
+        "Data_Log",
+        "Motion_Sensor",
+        "Node_Sync",
+        "Firewall_Layer",
+        "Door_Servo",
+        "Clock_Daemon",
+        "Radar_Pulse",
+        "Battery_Monitor",
+        "Access_Token",
+        "Kernel_Patch",
+    }),
+    errorWords = table.freeze({
+        "Banana_Core",
+        "Pizza_Protocol",
+        "Teeth_Render",
+        "Glitch_Entity",
+        "Smile_Format",
+        "Eye_Tracker",
+        "Meat_Syntax",
+        "Blood_String",
+        "Shadow_Byte",
+        "Laugh_Buffer",
+        "Skin_Compile",
+        "Hunger_Loop",
+        "Whisper_Socket",
+        "Bone_Index",
+        "Wet_Pointer",
+    }),
+})
+
 -- B.2
 Strings.Puzzle = table.freeze({
     title = "PAINEL DE CIRCUITO LÓGICO — RESTAURAÇÃO DE FIREWALL",

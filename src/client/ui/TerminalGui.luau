@@ -5,6 +5,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local GameConfig = require(Shared:WaitForChild("GameConfig"))
 local Strings = require(Shared:WaitForChild("Strings"))
 local UiKit = require(script.Parent.UiKit)
 
@@ -16,6 +17,12 @@ export type Puzzle = {
     cancel: TextButton,
 }
 
+export type Minigame = {
+    frame: Frame,
+    timer: TextLabel,
+    buttons: { TextButton }, -- uma por palavra, na ordem recebida (3 × 3)
+}
+
 export type Terminal = {
     gui: ScreenGui,
     output: ScrollingFrame,
@@ -24,6 +31,7 @@ export type Terminal = {
     send: TextButton,
     close: TextButton,
     puzzle: Puzzle,
+    minigame: Minigame,
 }
 
 -- Apresentação. Alturas de 0.13 da tela dão ~49 px no iPhone SE (alvo ≥ 48 px, 5.11).
@@ -31,6 +39,10 @@ local ROW_HEIGHT = 0.13
 local SCROLLBAR_PX = 6
 local GATE_COUNT = 6
 local TABLE_ROWS = 5 -- cabeçalho + 4
+local WORD_COLUMNS = 3
+local WORD_AREA_TOP = 0.2
+local WORD_AREA_HEIGHT = 0.78
+local WORD_GAP = 0.03
 
 local TerminalGui = {}
 
@@ -121,6 +133,66 @@ local function buildPuzzle(parent: Instance): Puzzle
         maxTextSize = 20,
     })
     return { frame = frame, rows = rows, buttons = buttons, feedback = feedback, cancel = cancel }
+end
+
+-- Minigame do Círculo (3.8.3, B.1): título, contagem e as palavras em grade. Fica por cima de tudo no terminal.
+-- Com 9 palavras, cada botão tem ≈ 0.23 × 0.76 × 375 ≈ 65 px de altura no iPhone SE (5.11).
+local function buildMinigame(parent: Instance): Minigame
+    local C = UiKit.Color
+    local frame = UiKit.frame({
+        name = "Minigame",
+        parent = parent,
+        position = UDim2.fromScale(0.02, 0.03),
+        size = UDim2.fromScale(0.96, 0.76),
+        bg = C.panel,
+        border = true,
+        visible = false,
+        zIndex = 6,
+    })
+    frame.BorderColor3 = C.danger
+    frame.Active = true
+    UiKit.label({
+        name = "Title",
+        parent = frame,
+        position = UDim2.fromScale(0.02, 0.03),
+        size = UDim2.fromScale(0.74, 0.12),
+        text = Strings.Minigame.title,
+        color = C.danger,
+        xAlign = Enum.TextXAlignment.Left,
+        maxTextSize = 26,
+    })
+    local timer = UiKit.label({
+        name = "Timer",
+        parent = frame,
+        position = UDim2.fromScale(0.98, 0.03),
+        anchor = Vector2.new(1, 0),
+        size = UDim2.fromScale(0.2, 0.12),
+        color = C.warn,
+        xAlign = Enum.TextXAlignment.Right,
+        maxTextSize = 30,
+    })
+    local count = GameConfig.Circle.minigameWordCount
+    local rowHeight = WORD_AREA_HEIGHT / math.ceil(count / WORD_COLUMNS)
+    local columnWidth = 0.96 / WORD_COLUMNS
+    local buttons: { TextButton } = {}
+    for i = 1, count do
+        local column = (i - 1) % WORD_COLUMNS
+        local row = (i - 1) // WORD_COLUMNS
+        table.insert(
+            buttons,
+            UiKit.button({
+                name = `Word{i}`,
+                parent = frame,
+                position = UDim2.fromScale(0.02 + column * columnWidth, WORD_AREA_TOP + row * rowHeight),
+                size = UDim2.fromScale(columnWidth - WORD_GAP, rowHeight - WORD_GAP),
+                bg = C.panel,
+                border = true,
+                color = C.ok,
+                maxTextSize = 24,
+            })
+        )
+    end
+    return { frame = frame, timer = timer, buttons = buttons }
 end
 
 function TerminalGui.build(parent: Instance): Terminal
@@ -227,6 +299,7 @@ function TerminalGui.build(parent: Instance): Terminal
     })
 
     local puzzle = buildPuzzle(gui)
+    local minigame = buildMinigame(gui)
 
     gui.Parent = parent
     return {
@@ -237,6 +310,7 @@ function TerminalGui.build(parent: Instance): Terminal
         send = send,
         close = close,
         puzzle = puzzle,
+        minigame = minigame,
     }
 end
 

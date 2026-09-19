@@ -16,6 +16,7 @@ local RateLimiter = require(script.Parent.RateLimiter)
 local RadarService = require(script.Parent.RadarService)
 local FirewallService = require(script.Parent.FirewallService)
 local TerminalService = require(script.Parent.TerminalService)
+local MinigameService = require(script.Parent.MinigameService)
 
 local SAVE_VERSION = 1
 
@@ -120,6 +121,7 @@ local function onStartNight(player: Player, payload: unknown)
         onSessionEnded(player, night, result, enemy)
     end)
     FirewallService.attach(session) -- Hexágono, firewall e puzzle (Fase 5a)
+    MinigameService.attach(session) -- Círculo e minigame (Fase 5b)
     log(`{player.Name} começou a noite {night}`)
     session:start()
 end
@@ -187,6 +189,9 @@ local function onSetTerminalOpen(player: Player, payload: unknown)
         return
     end
     session:setTerminal(open)
+    if open then
+        MinigameService.onTerminalOpened(session) -- alerta ativo vira minigame (3.8.3)
+    end
 end
 
 -- TerminalCommand { text }: toda a validação fica no TerminalService (5.6, 5.9)
@@ -216,6 +221,20 @@ local function onPuzzleCancel(player: Player)
     if session then
         FirewallService.cancelPuzzle(session)
     end
+end
+
+-- MinigamePick { index }: inteiro; o MinigameService confere a faixa contra as palavras da rodada (5.6)
+local function onMinigamePick(player: Player, payload: unknown)
+    local session = sessions[player]
+    if not session or typeof(payload) ~= "table" then
+        return
+    end
+    -- cast justificado: o payload vem do cliente e é validado campo a campo
+    local index = (payload :: any).index
+    if typeof(index) ~= "number" or index ~= math.floor(index) then
+        return
+    end
+    MinigameService.pick(session, index)
 end
 
 local function onPlayerAdded(player: Player)
@@ -251,6 +270,7 @@ function NightService.init()
     Remotes.get(Enums.Remote.TerminalCommand).OnServerEvent:Connect(onTerminalCommand)
     Remotes.get(Enums.Remote.PuzzlePick).OnServerEvent:Connect(onPuzzlePick)
     Remotes.get(Enums.Remote.PuzzleCancel).OnServerEvent:Connect(onPuzzleCancel)
+    Remotes.get(Enums.Remote.MinigamePick).OnServerEvent:Connect(onMinigamePick)
     Remotes.get(Enums.Remote.ReturnToMenu).OnServerEvent:Connect(function(player: Player)
         endSession(player)
     end)

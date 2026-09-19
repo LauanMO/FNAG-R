@@ -43,6 +43,8 @@ local showToken = 0 -- invalida a limpeza agendada do resultado
 local blinkConn: RBXScriptConnection? = nil
 local scanConn: RBXScriptConnection? = nil
 local progressTween: Tween? = nil
+local serverAlert = false -- vírus do Círculo pendente: CAM 4 pulsa em amarelo mesmo sem ping (3.5, 3.8.3)
+local alertConn: RBXScriptConnection? = nil
 
 local function paintNode(node: string, state: Types.NodeState?)
     local view = ui.nodes[node]
@@ -56,6 +58,11 @@ local function paintNode(node: string, state: Types.NodeState?)
         view.name.TextColor3 = C.dim
         view.state.TextColor3 = C.dim
         view.state.Text = Strings.Tablet.dead
+    elseif node == Enums.Node.CAM4 and serverAlert then
+        view.frame.BorderColor3 = C.warn
+        view.name.TextColor3 = C.warn
+        view.state.TextColor3 = C.warn
+        view.state.Text = Strings.Tablet.anomalousTraffic
     elseif state == Enums.NodeState.Anomaly then
         view.frame.BorderColor3 = C.danger
         view.name.TextColor3 = C.danger
@@ -114,6 +121,33 @@ local function clearScan()
     table.clear(anomalyNodes)
     for _, node in Enums.NodeList do
         paintNode(node, nil)
+    end
+end
+
+local function setServerAlert(active: boolean)
+    serverAlert = active
+    local connection = alertConn
+    if connection then
+        connection:Disconnect()
+        alertConn = nil
+    end
+    local view = ui.nodes[Enums.Node.CAM4]
+    if not view then
+        return
+    end
+    paintNode(Enums.Node.CAM4, nil)
+    if active and not dead[Enums.Node.CAM4] then
+        local acc = 0
+        local lit = false
+        alertConn = RunService.RenderStepped:Connect(function(dt: number)
+            acc += dt
+            if acc < BLINK_SECONDS then
+                return
+            end
+            acc -= BLINK_SECONDS
+            lit = not lit
+            view.frame.BackgroundTransparency = if lit then NODE_BLINK_TRANSPARENCY else NODE_IDLE_TRANSPARENCY
+        end)
     end
 end
 
@@ -253,6 +287,9 @@ end
 local function onCameraDead(payload: Types.CameraDeadPayload)
     dead[payload.camera] = true
     paintNode(payload.camera, nil)
+    if payload.camera == Enums.Node.CAM4 then
+        setServerAlert(serverAlert) -- nó morto não pulsa
+    end
 end
 
 local function onFirewallChanged(payload: Types.FirewallChangedPayload)
@@ -277,6 +314,7 @@ local function onNightStarted()
     UiKit.setEnabled(ui.pingButton, true)
     ui.status.Text = Strings.Tablet.statusIdle
     ui.battery.Visible = false
+    setServerAlert(false)
 end
 
 local function onNightPhase(payload: Types.NightPhasePayload)
@@ -325,6 +363,9 @@ function TabletController.init()
     Remotes.get(Enums.Remote.TabletBatteryDead).OnClientEvent:Connect(onTabletBatteryDead)
     Remotes.get(Enums.Remote.NightStarted).OnClientEvent:Connect(onNightStarted)
     Remotes.get(Enums.Remote.NightPhase).OnClientEvent:Connect(onNightPhase)
+    Remotes.get(Enums.Remote.VirusAlert).OnClientEvent:Connect(function(payload: Types.VirusAlertPayload)
+        setServerAlert(payload.active)
+    end)
 end
 
 return TabletController

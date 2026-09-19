@@ -66,6 +66,7 @@ local sounds2D: { [string]: Sound } = {}
 local sounds3D: { [string]: { [string]: Sound } } = {} -- cue → lado → Sound
 local duckTweens: { Tween } = {}
 local duckToken = 0
+local currentPhase: Types.Phase = Enums.Phase.Boot
 
 local function makeSound(cue: string, assetId: string, parent: Instance): Sound
     local sound = Instance.new("Sound")
@@ -166,10 +167,14 @@ function AudioController.init()
         duckToken += 1
         tweenDuckedGroups(DUCK_ATTACK_SECONDS, 1)
         AudioController.setLoop(Enums.Cue.IntrusionAlarm, false)
+        AudioController.setLoop(Enums.Cue.VirusAlert, false)
+        currentPhase = Enums.Phase.Boot
     end)
     Remotes.get(Enums.Remote.NightPhase).OnClientEvent:Connect(function(payload: Types.NightPhasePayload)
+        currentPhase = payload.phase
         if payload.phase == Enums.Phase.Won or payload.phase == Enums.Phase.Lost then
             AudioController.setLoop(Enums.Cue.IntrusionAlarm, false)
+            AudioController.setLoop(Enums.Cue.VirusAlert, false)
         end
     end)
     -- 3.8.4: vidro digital a cada camada rompida; outro som quando uma camada volta
@@ -186,6 +191,16 @@ function AudioController.init()
     end)
     Remotes.get(Enums.Remote.GeneratorUsed).OnClientEvent:Connect(function()
         AudioController.play(Enums.Cue.GeneratorReset)
+    end)
+    -- Alarme do Círculo: toca enquanto o alerta está ativo e para quando o terminal abre (3.11)
+    Remotes.get(Enums.Remote.VirusAlert).OnClientEvent:Connect(function(payload: Types.VirusAlertPayload)
+        AudioController.setLoop(Enums.Cue.VirusAlert, payload.active)
+    end)
+    -- Câmera destruída reutiliza o som de firewall rompido (4.4); câmeras mortas de debug no boot ficam mudas
+    Remotes.get(Enums.Remote.CameraDead).OnClientEvent:Connect(function()
+        if currentPhase ~= Enums.Phase.Boot then
+            AudioController.play(Enums.Cue.FirewallBreak)
+        end
     end)
 end
 

@@ -22,6 +22,9 @@ export type Hud = {
     systems: Frame, -- uma linha "[!] sistema" por sistema corrompido (UIListLayout)
     intrusion: TextLabel,
     intrusionTint: Frame,
+    virusBanner: TextLabel,
+    virusBar: Frame,
+    virusFill: Frame,
     blackout: TextLabel,
     message: TextLabel,
     bootOverlay: Frame,
@@ -185,6 +188,35 @@ function HudGui.build(parent: Instance): Hud
         visible = false,
         maxTextSize = 34,
     })
+    -- Círculo (3.8.3): banner piscando e barra fina do fusível esvaziando
+    local virusBanner = UiKit.label({
+        name = "VirusAlert",
+        parent = gui,
+        position = UDim2.fromScale(0.5, 0.62),
+        anchor = Vector2.new(0.5, 0.5),
+        size = UDim2.fromScale(0.8, 0.06),
+        text = Strings.HUD.virusAlert,
+        color = C.danger,
+        visible = false,
+        maxTextSize = 30,
+    })
+    local virusBar = UiKit.frame({
+        name = "VirusFuse",
+        parent = gui,
+        position = UDim2.fromScale(0.5, 0.665),
+        anchor = Vector2.new(0.5, 0.5),
+        size = UDim2.fromScale(0.5, 0.014),
+        bg = C.panel,
+        border = true,
+        visible = false,
+    })
+    local virusFill = UiKit.frame({
+        name = "Fill",
+        parent = virusBar,
+        position = UDim2.fromScale(0, 0),
+        size = UDim2.fromScale(1, 1),
+        bg = C.danger,
+    })
     local blackout = UiKit.label({
         name = "Blackout",
         parent = gui,
@@ -231,6 +263,9 @@ function HudGui.build(parent: Instance): Hud
         systems = systems,
         intrusion = intrusion,
         intrusionTint = intrusionTint,
+        virusBanner = virusBanner,
+        virusBar = virusBar,
+        virusFill = virusFill,
         blackout = blackout,
         message = message,
         bootOverlay = bootOverlay,

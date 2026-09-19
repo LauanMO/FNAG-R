@@ -30,6 +30,8 @@ NightSession.Task = table.freeze({
     PuzzleNext = "puzzle_next",
     RestoreCooldown = "restore_cooldown",
     Intrusion = "intrusion",
+    CircleFuse = "circle_fuse",
+    MinigameTimer = "minigame_timer",
 })
 
 type AITask = { name: string, interval: number, fn: () -> () }

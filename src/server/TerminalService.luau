@@ -105,6 +105,9 @@ function TerminalService.handle(session: Session, player: Player, payload: unkno
     if not s.terminalOpen or not session:terminalAvailable() then
         return
     end
+    if s.minigame then
+        return -- 3.8.3 / 4.7: o minigame tem prioridade sobre o prompt
+    end
     local command = Commands.resolve(text)
     if command == nil then
         if Commands.normalize(text) ~= "" then

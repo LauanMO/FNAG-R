@@ -54,6 +54,8 @@ local GameConfig = {
         alertFuseSeconds = 30,
         minigameSeconds = 15,
         minigameWordCount = 9,
+        fuseTickSeconds = 1, -- resolução da contagem do fusível
+        minigameTickSeconds = 1, -- resolução do timer do minigame
     },
     Hexagon = {
         tickSeconds = 25,
@@ -115,6 +117,7 @@ local GameConfig = {
             puzzle_err = "rbxassetid://9113085764", -- Alarm Buzzer 5
             generator_reset = "rbxassetid://9117882503", -- Power Up Accelerating Motors 1
             jumpscare_hexagon = "rbxassetid://9126001417", -- Static Squeaky Bursts Sharp Electric Charge
+            virus_alert = "rbxassetid://9125557781", -- Fire Alarm High School Harsh Rhythmic Buzzer (loop)
         } :: { [string]: string },
         arrivalDuckAmount = 0.6,
         arrivalDuckSeconds = 1.5,
@@ -123,10 +126,10 @@ local GameConfig = {
     Debug = {
         timeScale = 1, -- 5 = noite de 72s para testar. Só tem efeito em Studio (5.9).
         deterministicSeed = nil :: number?, -- número = RNG reproduzível. Só em Studio.
-        logAI = true, -- imprime cada sorteio das IAs (Fase 3)
+        logAI = false, -- imprime cada sorteio das IAs (Fase 3)
         logSession = true, -- imprime boot, fases e fim de noite no Output
-        deadCamerasAtStart = { "CAM1" } :: { string }, -- ex.: { "CAM1" } para testar "em nó cego". Só em Studio.
-        levelOverrides = {} :: { [string]: number }, -- ex.: { hexagon = 20 } para testar a Fase 5. Só em Studio.
+        deadCamerasAtStart = {} :: { string }, -- ex.: { "CAM1" } para testar "em nó cego". Só em Studio.
+        levelOverrides = { circle = 20 } :: { [string]: number }, -- ex.: { hexagon = 20 } para testar a Fase 5. Só em Studio.
     },
 }
 

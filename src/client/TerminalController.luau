@@ -20,6 +20,7 @@ local TerminalGui = require(script.Parent.ui.TerminalGui)
 local AudioController = require(script.Parent.AudioController)
 local InputController = require(script.Parent.InputController)
 local Overlay = require(script.Parent.Overlay)
+local HudController = require(script.Parent.HudController)
 
 -- Apresentação
 local MAX_LINES = 200
@@ -46,6 +47,9 @@ local palette: { string } = {}
 local paletteIndex = 0 -- Tab cicla pela paleta
 local puzzleToken = 0
 local settingText = false -- mudança de texto feita pelo código: sem som de tecla
+local minigameActive = false -- 3.8.3 / 4.7: o minigame tem prioridade sobre o prompt
+local minigameDeadline = 0
+local minigameConn: RBXScriptConnection? = nil
 
 local function textSize(): number
     local camera = Workspace.CurrentCamera
@@ -118,7 +122,7 @@ local function focusInput()
     task.spawn(function()
         -- espera um frame: capturar o foco no mesmo frame da tecla T faria o "t" ser digitado
         RunService.Heartbeat:Wait()
-        if open then
+        if open and not minigameActive then
             ui.input:CaptureFocus()
         end
     end)
@@ -166,6 +170,9 @@ local function requestOpen(value: boolean)
 end
 
 local function submit()
+    if minigameActive then
+        return -- prompt bloqueado até resolver a anomalia
+    end
     local text = Commands.normalize(ui.input.Text)
     setInputText("")
     paletteIndex = 0
@@ -176,6 +183,9 @@ local function submit()
 end
 
 local function fillInput(command: string)
+    if minigameActive then
+        return
+    end
     setInputText(command)
     focusInput()
 end
@@ -303,6 +313,72 @@ local function onPuzzleResult(payload: Types.PuzzleResultPayload)
     end
 end
 
+-- 4.7: com o minigame na tela, o prompt aparece cinza e bloqueado
+local function setPromptBlocked(blocked: boolean)
+    if blocked then
+        setInputText("")
+        ui.input:ReleaseFocus()
+    end
+    ui.input.TextEditable = not blocked
+    ui.input.PlaceholderText = if blocked then Strings.Minigame.blocked else ""
+    ui.input.PlaceholderColor3 = UiKit.Color.dim
+    UiKit.setEnabled(ui.send, not blocked)
+end
+
+local function stopMinigameTimer()
+    local connection = minigameConn
+    if connection then
+        connection:Disconnect()
+        minigameConn = nil
+    end
+end
+
+local function hideMinigame()
+    minigameActive = false
+    stopMinigameTimer()
+    ui.minigame.frame.Visible = false
+    setPromptBlocked(false)
+end
+
+local function setWordButtonsEnabled(enabled: boolean)
+    for _, button in ui.minigame.buttons do
+        UiKit.setEnabled(button, enabled)
+    end
+end
+
+-- 3.8.3: 9 palavras, uma infectada. A contagem aqui só mostra o tempo; quem encerra é o servidor.
+local function onMinigameStart(payload: Types.MinigameStartPayload)
+    minigameActive = true
+    hidePuzzle()
+    local view = ui.minigame
+    for i, button in view.buttons do
+        local word = payload.words[i]
+        button.Visible = word ~= nil
+        button.Text = word or ""
+    end
+    setWordButtonsEnabled(true)
+    setPromptBlocked(true)
+    view.frame.Visible = true
+    stopMinigameTimer()
+    -- Em Studio o servidor pode estar acelerado (Debug.timeScale); a contagem acompanha
+    local scale = if RunService:IsStudio() then GameConfig.Debug.timeScale else 1
+    minigameDeadline = os.clock() + payload.seconds / scale
+    minigameConn = RunService.RenderStepped:Connect(function()
+        local remaining = math.max(0, minigameDeadline - os.clock()) * scale
+        view.timer.Text = string.format(Strings.Minigame.timer, math.ceil(remaining))
+    end)
+end
+
+-- 3.8.3: acertando ou errando, o terminal fecha. Com câmera destruída, o HUD já avisa qual (CameraDead).
+local function onMinigameResult(payload: Types.MinigameResultPayload)
+    hideMinigame()
+    if payload.success or payload.cameraKilled == nil then
+        local M = Strings.Minigame
+        HudController.showMessage(if payload.success then M.ok elseif payload.timeout then M.timeout else M.err)
+    end
+    requestOpen(false)
+end
+
 local function onNightStarted()
     nightActive = true
     running = false
@@ -311,6 +387,7 @@ local function onNightStarted()
     booted = false
     clearLines()
     hidePuzzle()
+    hideMinigame()
     setInputText("")
     setOpenLocal(false, true)
 end
@@ -321,6 +398,7 @@ local function onNightPhase(payload: Types.NightPhasePayload)
     if payload.phase == Enums.Phase.Won or payload.phase == Enums.Phase.Lost then
         nightActive = false
         hidePuzzle()
+        hideMinigame()
         setOpenLocal(false, true)
     end
 end
@@ -374,6 +452,15 @@ function TerminalController.init()
             Remotes.get(Enums.Remote.PuzzlePick):FireServer({ gate = gate } :: Types.PuzzlePickPayload)
         end)
     end
+    for index, button in ui.minigame.buttons do
+        button.Activated:Connect(function()
+            if not minigameActive or not UiKit.isEnabled(button) then
+                return
+            end
+            setWordButtonsEnabled(false)
+            Remotes.get(Enums.Remote.MinigamePick):FireServer({ index = index } :: Types.MinigamePickPayload)
+        end)
+    end
     ui.puzzle.cancel.Activated:Connect(function()
         hidePuzzle()
         Remotes.get(Enums.Remote.PuzzleCancel):FireServer({})
@@ -386,6 +473,8 @@ function TerminalController.init()
     Remotes.get(Enums.Remote.PuzzleStart).OnClientEvent:Connect(onPuzzleStart)
     Remotes.get(Enums.Remote.PuzzleResult).OnClientEvent:Connect(onPuzzleResult)
     Remotes.get(Enums.Remote.PuzzleClosed).OnClientEvent:Connect(hidePuzzle)
+    Remotes.get(Enums.Remote.MinigameStart).OnClientEvent:Connect(onMinigameStart)
+    Remotes.get(Enums.Remote.MinigameResult).OnClientEvent:Connect(onMinigameResult)
     Remotes.get(Enums.Remote.TabletState).OnClientEvent:Connect(function(payload: Types.TabletStatePayload)
         batteryRemaining = payload.batteryRemaining
     end)
