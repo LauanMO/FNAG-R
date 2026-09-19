@@ -18,6 +18,7 @@ local Types = require(Shared:WaitForChild("Types"))
 
 local AudioController = {}
 
+local MASTER_GROUP = "Master" -- pai de todos os grupos: o volume das Configurações multiplica tudo
 local GROUP_NAMES = { "Ambient", "Enemy", "UI", "Alarm" }
 local DEFAULT_GROUP = "UI"
 -- Grupos que abaixam quando um inimigo chega na soleira (5.13)
@@ -67,6 +68,7 @@ local sounds3D: { [string]: { [string]: Sound } } = {} -- cue → lado → Sound
 local duckTweens: { Tween } = {}
 local duckToken = 0
 local currentPhase: Types.Phase = Enums.Phase.Boot
+local masterGroup: SoundGroup? = nil
 
 local function makeSound(cue: string, assetId: string, parent: Instance): Sound
     local sound = Instance.new("Sound")
@@ -120,10 +122,14 @@ local function onEnemyAudioCue(payload: Types.EnemyAudioCuePayload)
 end
 
 function AudioController.init()
+    local master = Instance.new("SoundGroup")
+    master.Name = MASTER_GROUP
+    master.Parent = SoundService
+    masterGroup = master
     for _, name in GROUP_NAMES do
         local group = Instance.new("SoundGroup")
         group.Name = name
-        group.Parent = SoundService
+        group.Parent = master -- grupos aninhados: os volumes se multiplicam
         groups[name] = group
     end
 
@@ -168,10 +174,18 @@ function AudioController.init()
         tweenDuckedGroups(DUCK_ATTACK_SECONDS, 1)
         AudioController.setLoop(Enums.Cue.IntrusionAlarm, false)
         AudioController.setLoop(Enums.Cue.VirusAlert, false)
+        AudioController.setLoop(Enums.Cue.AmbientLowPower, false)
+        AudioController.setLoop(Enums.Cue.AmbientHum, true) -- 3.11: o zumbido de servidor é a base da noite
         currentPhase = Enums.Phase.Boot
     end)
     Remotes.get(Enums.Remote.NightPhase).OnClientEvent:Connect(function(payload: Types.NightPhasePayload)
         currentPhase = payload.phase
+        -- Sem energia não há zumbido: some no blackout, volta com o gerador e some no fim da noite
+        local powered = payload.phase == Enums.Phase.Boot or payload.phase == Enums.Phase.Running
+        AudioController.setLoop(Enums.Cue.AmbientHum, powered)
+        if payload.phase ~= Enums.Phase.Running then
+            AudioController.setLoop(Enums.Cue.AmbientLowPower, false)
+        end
         if payload.phase == Enums.Phase.Won or payload.phase == Enums.Phase.Lost then
             AudioController.setLoop(Enums.Cue.IntrusionAlarm, false)
             AudioController.setLoop(Enums.Cue.VirusAlert, false)
@@ -202,16 +216,32 @@ function AudioController.init()
             AudioController.play(Enums.Cue.FirewallBreak)
         end
     end)
+    -- Energia abaixo de lowPowerCritical: zumbido elétrico instável por cima do ambiente (3.11)
+    Remotes.get(Enums.Remote.PowerChanged).OnClientEvent:Connect(function(payload: Types.PowerChangedPayload)
+        local low = currentPhase == Enums.Phase.Running
+            and payload.power > 0
+            and payload.power < GameConfig.Power.lowPowerCritical
+        AudioController.setLoop(Enums.Cue.AmbientLowPower, low)
+    end)
+    -- 6 AM (3.10): o ambiente corta e toca um "ding" suave
+    Remotes.get(Enums.Remote.NightWon).OnClientEvent:Connect(function()
+        AudioController.setLoop(Enums.Cue.AmbientHum, false)
+        AudioController.setLoop(Enums.Cue.AmbientLowPower, false)
+        AudioController.play(Enums.Cue.Dawn)
+    end)
 end
 
 -- Toca um cue do início. side escolhe a soleira dos posicionais (padrão: esquerda); volume multiplica (padrão 1).
-function AudioController.play(cue: string, side: Types.Side?, volume: number?)
+-- Devolve o Sound (ou nil, se o cue não tem asset) para quem quiser mexer no pitch, como o jumpscare do Hexágono.
+function AudioController.play(cue: string, side: Types.Side?, volume: number?): Sound?
     local bySide = sounds3D[cue]
     local sound = if bySide then bySide[side or Enums.Side.Left] else sounds2D[cue]
     if sound then
         sound.Volume = volume or 1
+        sound.PlaybackSpeed = 1
         sound:Play()
     end
+    return sound
 end
 
 -- Liga/desliga um loop 2D (ambient_hum, virus_alert, intrusion_alarm)
@@ -226,6 +256,14 @@ function AudioController.setLoop(cue: string, on: boolean)
         end
     else
         sound:Stop()
+    end
+end
+
+-- Configurações (Fase 6): volume master de 0 a 1, aplicado ao grupo pai de todos
+function AudioController.setMasterVolume(volume: number)
+    local master = masterGroup
+    if master then
+        master.Volume = math.clamp(volume, 0, 1)
     end
 end
 

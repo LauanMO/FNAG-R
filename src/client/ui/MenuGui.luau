@@ -1,5 +1,6 @@
 --!strict
--- MenuGui: constrói a ScreenGui do menu (PLANEJAMENTO 5.12 / B.8). Glitch do título e estática entram na Fase 6.
+-- MenuGui: constrói a ScreenGui do menu (PLANEJAMENTO 5.12 / B.8): título, cinco botões, rodapé e as camadas
+-- de estática que o MenuController anima.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -9,6 +10,8 @@ local UiKit = require(script.Parent.UiKit)
 
 export type Menu = {
     gui: ScreenGui,
+    static: Frame,
+    scanline: Frame,
     title: TextLabel,
     newGame: TextButton,
     continueBtn: TextButton,
@@ -19,11 +22,11 @@ export type Menu = {
     saveWarning: TextLabel,
 }
 
--- Cinco botões empilhados: 5 × 0.164 + 4 × 0.03 de espaçamento = 0.94 do container.
--- O container ocupa 0.66 da tela: ~46 px por botão no iPhone SE.
--- Alvo de 5.11 é ≥ 48 px; revisar na Fase 6 junto com as outras ScreenGuis.
-local BUTTON_HEIGHT = 0.164
-local BUTTON_GAP = 0.03
+-- Cinco botões empilhados num container de 0.70 da altura da tela (5.11): 5 × 0.186 + 4 × 0.0175 = 1.
+-- Cada botão fica com 0.13 da tela ≈ 49 px no iPhone SE (alvo ≥ 48 px).
+local BUTTON_HEIGHT = 0.186
+local BUTTON_GAP = 0.0175
+local CONTENT_Z = 4 -- acima da estática
 
 local MenuGui = {}
 
@@ -53,25 +56,47 @@ function MenuGui.build(parent: Instance): Menu
         position = UDim2.fromScale(0, 0),
         size = UDim2.fromScale(1, 1),
         bg = C.bg,
+        zIndex = 1,
     })
+    -- Estática (5.12): o MenuController troca cor e transparência a cada frame e move a linha de varredura
+    local static = UiKit.frame({
+        name = "Static",
+        parent = gui,
+        position = UDim2.fromScale(0, 0),
+        size = UDim2.fromScale(1, 1),
+        bg = C.dim,
+        zIndex = 2,
+    })
+    static.BackgroundTransparency = 1
+    local scanline = UiKit.frame({
+        name = "Scanline",
+        parent = gui,
+        position = UDim2.fromScale(0, 0),
+        size = UDim2.fromScale(1, 0.008),
+        bg = C.ok,
+        zIndex = 3,
+    })
+    scanline.BackgroundTransparency = 0.85
 
     local title = UiKit.label({
         name = "Title",
         parent = gui,
-        position = UDim2.fromScale(0.5, 0.11),
+        position = UDim2.fromScale(0.5, 0.1),
         anchor = Vector2.new(0.5, 0.5),
         size = UDim2.fromScale(0.9, 0.12),
         text = Strings.Menu.title,
         color = C.ok,
+        zIndex = CONTENT_Z,
         maxTextSize = 64,
     })
 
     local buttons = UiKit.frame({
         name = "Buttons",
         parent = gui,
-        position = UDim2.fromScale(0.5, 0.56),
+        position = UDim2.fromScale(0.5, 0.54),
         anchor = Vector2.new(0.5, 0.5),
-        size = UDim2.fromScale(0.5, 0.66),
+        size = UDim2.fromScale(0.5, 0.7),
+        zIndex = CONTENT_Z,
     })
     local layout = Instance.new("UIListLayout")
     layout.FillDirection = Enum.FillDirection.Vertical
@@ -96,6 +121,7 @@ function MenuGui.build(parent: Instance): Menu
         text = Strings.Menu.saveUnavailable,
         color = C.warn,
         visible = false,
+        zIndex = CONTENT_Z,
         maxTextSize = 18,
     })
     local footer = UiKit.label({
@@ -106,12 +132,15 @@ function MenuGui.build(parent: Instance): Menu
         size = UDim2.fromScale(0.8, 0.035),
         text = Strings.Menu.footer,
         color = C.dim,
+        zIndex = CONTENT_Z,
         maxTextSize = 16,
     })
 
     gui.Parent = parent
     return {
         gui = gui,
+        static = static,
+        scanline = scanline,
         title = title,
         newGame = newGame,
         continueBtn = continueBtn,

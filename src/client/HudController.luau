@@ -5,6 +5,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -30,6 +31,9 @@ local PULSE_TRANSPARENCY = 0.6
 local FIREWALL_FLASH_SECONDS = 0.4 -- o firewall pisca a cada camada rompida (3.8.4)
 local VIRUS_BLINK_SECONDS = 0.35 -- banner de vírus piscando (3.8.3)
 local VIRUS_BLINK_TRANSPARENCY = 0.7
+local HEX_GARBLE_SECONDS = 1.4 -- Hexágono: os textos do HUD viram lixo antes de sumir (3.8.4)
+local GARBLE_INTERVAL = 0.05
+local GARBLE_LENGTH = 10
 local SYSTEM_LINE_HEIGHT = 0.19 -- fração da lista; cabem os 5 sistemas
 local POWER_SOURCE_SLOTS = 5 -- base + 2 portas + tablet + vazamento
 local BAR_FULL = "▮"
@@ -47,6 +51,8 @@ local dawnToken = 0 -- invalida uma sequência de amanhecer pendente
 local messageToken = 0
 local firewallToken = 0
 local virusTween: Tween? = nil
+local garbleConn: RBXScriptConnection? = nil
+local garbleRng = Random.new() -- apresentação, não lógica de jogo (Apêndice C.6)
 local pulseTween: Tween? = nil
 local touchMode = false
 local currentHour = 0
@@ -179,7 +185,50 @@ function HudController.showMessage(text: string)
     end)
 end
 
+local function stopGarble()
+    local connection = garbleConn
+    if connection then
+        connection:Disconnect()
+        garbleConn = nil
+    end
+end
+
+local function garbageText(): string
+    local chars = Strings.HUD.glitchChars
+    local out = table.create(GARBLE_LENGTH)
+    for i = 1, GARBLE_LENGTH do
+        local k = garbleRng:NextInteger(1, #chars)
+        out[i] = string.sub(chars, k, k)
+    end
+    return table.concat(out)
+end
+
+-- 3.8.4: no jumpscare do Hexágono os textos do HUD viram lixo de caracteres e só depois somem
+local function garbleThenHide(token: number)
+    stopGarble()
+    local labels = { hud.clock, hud.night, hud.powerText, hud.powerSources, hud.firewall, hud.generator }
+    local elapsed = 0
+    local sinceSwap = GARBLE_INTERVAL
+    garbleConn = RunService.Heartbeat:Connect(function(dt: number)
+        elapsed += dt
+        sinceSwap += dt
+        if sinceSwap >= GARBLE_INTERVAL then
+            sinceSwap = 0
+            for _, label in labels do
+                label.Text = garbageText()
+            end
+        end
+        if elapsed >= HEX_GARBLE_SECONDS then
+            stopGarble()
+            if token == dawnToken then
+                setVisible(false)
+            end
+        end
+    end)
+end
+
 local function onNightStarted(payload: Types.NightStartedPayload)
+    stopGarble()
     dawnToken += 1
     dawn.gui.Enabled = false
     currentHour = 0
@@ -278,13 +327,17 @@ local function onNightWon(payload: Types.NightWonPayload)
 end
 
 -- 3.10: o jumpscare toma a tela; o HUD some e a sequência de amanhecer pendente (se houver) é cancelada
-local function onJumpscare()
+local function onJumpscare(payload: Types.JumpscarePayload)
     dawnToken += 1
     setPulse(false)
     hud.message.Visible = false
     setIntrusion(false, nil)
     setVirusAlert(false, nil)
-    setVisible(false)
+    if payload.enemy == Enums.Enemy.Hexagon then
+        garbleThenHide(dawnToken)
+    else
+        setVisible(false)
+    end
 end
 
 function HudController.init()

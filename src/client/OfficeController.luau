@@ -21,6 +21,9 @@ local RESTORE_SECONDS = 1 -- luzes voltam em 1s após reset generator (3.9)
 local FLICKER_CHANCE_PER_FRAME = 0.06
 local FLICKER_MIN = 0.15
 local FLICKER_MAX = 0.7
+local CORRIDOR_FLICKER_CHANCE = 0.015 -- por frame: a luz do fundo do corredor falha de vez em quando
+local CORRIDOR_FLICKER_MIN = 0.05
+local CORRIDOR_FLICKER_MAX = 0.5
 
 type Fixture = {
     part: BasePart,
@@ -147,6 +150,23 @@ function OfficeController.init()
     local clock = office:WaitForChild(Enums.Office.WallClock)
     local gui = clock:WaitForChild("SurfaceGui")
     wallClockLabel = gui:WaitForChild(Enums.Office.WallClockLabel) :: TextLabel
+
+    -- Corredores (3.4): a luz fraca do fundo tremula, sem depender da energia do escritório
+    local corridors = office:WaitForChild(Enums.Office.Corridors)
+    local corridorLights: { { light: PointLight, base: number } } = {}
+    for _, descendant in corridors:GetDescendants() do
+        if descendant:IsA("PointLight") then
+            table.insert(corridorLights, { light = descendant, base = descendant.Brightness })
+        end
+    end
+    RunService.Heartbeat:Connect(function()
+        for _, entry in corridorLights do
+            local dip = rng:NextNumber() < CORRIDOR_FLICKER_CHANCE
+            entry.light.Brightness = if dip
+                then entry.base * rng:NextNumber(CORRIDOR_FLICKER_MIN, CORRIDOR_FLICKER_MAX)
+                else entry.base
+        end
+    end)
 
     Remotes.get(Enums.Remote.NightStarted).OnClientEvent:Connect(onNightStarted)
     Remotes.get(Enums.Remote.NightPhase).OnClientEvent:Connect(onNightPhase)

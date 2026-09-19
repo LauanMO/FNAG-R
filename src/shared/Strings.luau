@@ -21,9 +21,17 @@ Strings.Menu = table.freeze({
     tutorial = "Tutorial",
     customNight = "Custom Night",
     settings = "Configurações",
-    comingSoon = "%s (em breve)",
     footer = "© 2026 Arthur", -- ajustar créditos do time
     saveUnavailable = "Save indisponível — progresso não será salvo",
+})
+
+-- Configurações do menu (Fase 6)
+Strings.Settings = table.freeze({
+    title = "CONFIGURAÇÕES",
+    volume = "VOLUME: %d%%",
+    volumeDown = "−",
+    volumeUp = "+",
+    back = "VOLTAR",
 })
 
 -- B.4

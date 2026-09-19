@@ -14,8 +14,9 @@ Regras:
 - Se o design mudar, mude o PLANEJAMENTO primeiro e depois o código — nunca o contrário.
 
 ## Estado atual
-- Fases 0 a 5a validadas no Studio. Fase 5b (Círculo e minigame) implementada; aceite pendente.
-- Próxima: Fase 6 (áudio completo, jumpscares finais, polimento visual).
+- Fases 0 a 5b validadas no Studio. Fase 6 (áudio, jumpscares finais, menu, sonar, volume) implementada; aceite pendente.
+- Próxima: Fase 7 (tutorial, progressão, save em DataStore, balanceamento).
+- Sons são placeholders escolhidos pelo nome; o time precisa ouvir e trocar no GameConfig.
 - Tablet, terminal e manual são telas exclusivas (`src/client/Overlay.luau`). Serviços registram IAs com `session:addAITask`.
 - Esc é reservado pelo Roblox: overlays fecham com a mesma tecla que abriu ou com o botão FECHAR.
 - As IAs recebem a sessão pela interface `Types.AIHost`; nunca fazem require de NightSession.

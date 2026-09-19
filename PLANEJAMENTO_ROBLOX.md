@@ -359,6 +359,8 @@ Ciclo completo: 10s. Como o Quadrado age a cada 5s, um ping pode ficar desatuali
 
 **Sonar 3D (Noite 6+)** [ORIGINAL no roadmap, não implementado — Fase 7 ou backlog]: a partir da noite 6, o ping também produz um *flash* de 0.5s no 3D: a sala fica em wireframe branco-e-preto e, se um inimigo estiver na soleira, sua silhueta aparece no corredor. É uma versão visual do telegraph para as noites em que o som fica sutil. Implementação: trocar o `Lighting` para um preset "sonar" (Ambient branco, FogEnd curto, `ColorCorrection` em alto contraste) por 0.5s e mostrar um modelo wireframe do inimigo.
 
+**Como ficou (Fase 6, `SonarController`):** o ping só acontece com o tablet aberto, que cobre a tela, e olhando para a mesa as soleiras ficam fora do quadro. Por isso, durante o flash, o fundo do tablet fica translúcido e o campo de visão abre para 115° por 0.5s, o que põe as duas soleiras na tela. A sala vira wireframe com um `Highlight` (preenchimento preto, contorno branco) e `ColorCorrection` sem saturação; a silhueta de quem estiver na soleira ganha um `Highlight` branco `AlwaysOnTop`, visível até através da porta fechada. Os Highlights são criados e destruídos a cada flash, porque desativados ainda ocupam o limite do motor.
+
 ### 3.6 O terminal
 
 [ORIGINAL com ajustes de mobile e segurança]
@@ -526,6 +528,8 @@ Cada linha é um som que precisa existir. Nomes são os `SoundId` lógicos usado
 | `menu_glitch` | glitch do menu | não | |
 
 Fonte dos sons: biblioteca de áudio do Roblox (Creator Store) ou sons próprios subidos pelo time. **Não usar** sons de outros jogos.
+
+> Status (Fase 6): todos os cues têm asset em `GameConfig.Audio.ids`, da biblioteca licenciada do Roblox (ProSoundEffects e cliques oficiais). Foram escolhidos pelo nome, **sem audição**: o time precisa ouvir cada um no Studio e trocar o que não servir. O nome de cada som está no comentário ao lado do id. `enemy_arrival_*` é o mais importante (seção 7: volume por noite) e merece atenção primeiro.
 
 ### 3.12 Noite 0 — tutorial (roteirizado)
 
@@ -1039,6 +1043,7 @@ local GameConfig = {
         pingShowSeconds = 6,
         pingCooldownSeconds = 3,
         cameraBreakOrder = { "CAM1", "CAM4", "CAM2", "CAM3" },
+        sonarFlashSeconds = 0.5,
     },
     Circle = {
         tickSeconds = 15,
@@ -1064,6 +1069,9 @@ local GameConfig = {
         maxCommandsPerSecond = 5,
         maxInputLength = 64,      -- TerminalCommand acima disso é ignorado (5.6)
         maxTogglesPerSecond = 10, -- rate limit de SetTerminalOpen (5.9)
+    },
+    Settings = {
+        maxUpdatesPerSecond = 5,  -- rate limit de UpdateSettings (5.9)
     },
     Puzzle = {
         closeAfterCorrectSeconds = 1.2,
@@ -1091,9 +1099,10 @@ local GameConfig = {
         timeScale = 1,          -- 5 = noite de 72s para testar
         deterministicSeed = nil, -- número = RNG reproduzível
         logAI = false,
-        logSession = true,      -- imprime boot, fases e fim de noite no Output
+        logSession = false,     -- imprime boot, fases e fim de noite no Output (ligar só para testar)
         deadCamerasAtStart = {}, -- ex.: { "CAM1" } para testar "em nó cego" (Fase 4). Só em Studio.
         levelOverrides = {},     -- ex.: { hexagon = 20 } para testar hackers em qualquer noite. Só em Studio.
+        forceSonar = false,      -- liga o sonar 3D em qualquer noite. Só em Studio.
     },
 }
 return table.freeze(GameConfig)  -- na prática, congelamento recursivo (deepFreeze)
@@ -1226,6 +1235,7 @@ Todos são `RemoteEvent`, criados em `ReplicatedStorage/Remotes` por `Remotes.lu
 | `PuzzlePick` | `{ gate: string }` | Puzzle ativo; `gate` ∈ lista |
 | `PuzzleCancel` | `{}` | |
 | `TutorialAdvance` | `{ step: number }` | Só na Noite 0; `step == expected` |
+| `UpdateSettings` | `{ masterVolume: number }` | Número, não NaN, preso a `0..1`; rate limit. Vai para `save.settings` (Fase 6) |
 
 **Servidor → Cliente (estado/eventos):**
 
@@ -1562,15 +1572,17 @@ Maior fase. Dividir em 5a (Terminal + Manual + Hexágono + Puzzle) e 5b (Círcul
 
 ### Fase 6 — Áudio completo, jumpscares finais, polimento visual
 
-- [ ] Todos os cues da tabela 3.11 com assets reais em `GameConfig.Audio.ids`.
-- [ ] Jumpscares com modelos (cubo/prisma/grade hexagonal) e coreografia de câmera.
-- [ ] Menu com glitch e estática.
-- [ ] Silhuetas melhores; luz fraca nos corredores; flicker.
-- [ ] Sonar 3D (noite 6+): preset de Lighting + wireframe por 0.5s no ping.
-- [ ] Configurações: volume master.
+- [x] Todos os cues da tabela 3.11 com assets em `GameConfig.Audio.ids` (placeholders licenciados, escolhidos sem audição; ver 3.11). Zumbido ambiente em loop, zumbido de energia baixa abaixo de 10%, "ding" às 6 AM, glitch do menu.
+- [x] Jumpscares com modelos (cubo com olhos, prisma de duas cunhas, grade hexagonal de neon saindo do monitor) e coreografia de câmera (trava, tremor, campo de visão). No Hexágono, os textos do HUD viram lixo e o tom sobe até estourar.
+- [x] Menu com glitch (RNG 1-15, >10 → 400 ms a cada 5 s) e estática.
+- [x] Silhuetas melhores (cubo com olhos, prisma); luz fraca nos corredores tremulando; flicker das luzes da sala abaixo de 10%.
+- [x] Sonar 3D (noite 6+): preset de Lighting + wireframe por 0.5s no ping (ver 3.5: tablet translúcido e campo de visão aberto durante o flash).
+- [x] Configurações: volume master (passos de 10%, SoundGroup `Master`, salvo em `save.settings` pelo `UpdateSettings`).
 - [ ] Passar por todas as telas no emulador mobile.
 
 **Aceite:** alguém que nunca viu o jogo joga a Noite 1 sem explicação e entende o que os sons significam. Nenhum `print` visível, nenhum placeholder de texto.
+
+> Status 19/09/2026: implementada; aceite no Studio pendente, incluindo a passada pelo Device Emulator (iPhone SE) e a audição dos sons. Revisão de 5.11 feita no código: todos os botões com pelo menos 48 px no iPhone SE (menu e ping do tablet foram ampliados), posições em Scale. `Debug.logSession` agora vem desligado. Pendências de texto: o rodapé `© 2026 Arthur` (B.8) espera os créditos do time; Tutorial e Custom Night aparecem bloqueados até a Fase 7.
 
 ### Fase 7 — Tutorial, progressão, save, balanceamento
 
@@ -2024,4 +2036,4 @@ Falas da Unidade de Assistência de Debug. As quatro primeiras são as originais
 
 ---
 
-*Fim do documento. Próxima ação: validar a Fase 5b no Studio (aceite da seção 6: cenário 4.4 e as duas variantes); depois, Fase 6.*
+*Fim do documento. Próxima ação: validar a Fase 6 no Studio (aceite da seção 6, Device Emulator e audição dos sons); depois, Fase 7.*

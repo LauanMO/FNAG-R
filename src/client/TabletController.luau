@@ -20,12 +20,14 @@ local AudioController = require(script.Parent.AudioController)
 local HudController = require(script.Parent.HudController)
 local InputController = require(script.Parent.InputController)
 local Overlay = require(script.Parent.Overlay)
+local SonarController = require(script.Parent.SonarController)
 
 -- Apresentação
 local BLINK_SECONDS = 0.35 -- nós com anomalia piscam enquanto o resultado está na tela
 local SCANLINE_SPEED = 0.35 -- frações da tela por segundo
 local NODE_IDLE_TRANSPARENCY = 0.85
 local NODE_BLINK_TRANSPARENCY = 0.45
+local SONAR_TABLET_TRANSPARENCY = 0.8 -- no flash do sonar o tablet fica translúcido e a sala aparece (3.5)
 
 local TabletController = {}
 
@@ -331,6 +333,14 @@ local function onTabletBatteryDead()
 end
 
 function TabletController.init()
+    SonarController.flashed:Connect(function(seconds: number)
+        ui.background.BackgroundTransparency = SONAR_TABLET_TRANSPARENCY
+        TweenService:Create(
+            ui.background,
+            TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+            { BackgroundTransparency = 0 }
+        ):Play()
+    end)
     InputController.tabletToggle:Connect(function()
         requestOpen(not open)
     end)

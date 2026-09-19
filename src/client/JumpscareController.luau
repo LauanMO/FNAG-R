@@ -1,8 +1,10 @@
 --!strict
--- JumpscareController: coreografia do jumpscare e tela de game over (PLANEJAMENTO 3.8, 3.10).
+-- JumpscareController: coreografia dos jumpscares e tela de game over (PLANEJAMENTO 3.8, 3.10).
 -- O servidor já encerrou a sessão quando Jumpscare chega; tudo aqui é apresentação no cliente.
--- Físicos: a câmera é forçada para a porta e o inimigo avança até encher a tela em 0.4s, com estática.
--- Hexágono: o ciano toma a tela a partir do centro, com estática, e "FIREWALL BREACHED" antes do game over.
+-- Físicos: a câmera trava na porta e treme, o campo de visão fecha, e o cubo com olhos (Quadrado) ou o prisma
+-- (Triângulo) sai da soleira até encher a tela em 0.4 s, com estática.
+-- Hexágono: a câmera vira para a mesa, uma grade hexagonal ciana sai do monitor e cresce até cobrir a visão,
+-- o tom sobe até estourar em estática e ciano, e a tela termina em FIREWALL BREACHED.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
@@ -21,24 +23,44 @@ local AudioController = require(script.Parent.AudioController)
 local OfficeCamera = require(script.Parent.OfficeCamera)
 local JumpscareGui = require(script.Parent.ui.JumpscareGui)
 
--- Apresentação (3.10): 3s inescapáveis; o avanço até a tela leva 0.4s
+-- Apresentação (3.10): 3 s inescapáveis
 local JUMPSCARE_SECONDS = 3
-local LUNGE_SECONDS = 0.4
-local LUNGE_END_OFFSET = CFrame.new(0, -0.4, -3.2) -- em frente à câmera, enchendo a tela
 local STATIC_GRAY_MIN = 30
 local STATIC_GRAY_MAX = 210
 local STATIC_TRANSPARENCY_MIN = 0.35
 local STATIC_TRANSPARENCY_MAX = 0.85
+-- Físicos (3.8.1, 3.8.2)
+local LUNGE_SECONDS = 0.4
+local LUNGE_END_OFFSET = CFrame.new(0, -0.4, -3.2) -- em frente à câmera, enchendo a tela
+local LUNGE_FOV = 45 -- o campo de visão fecha junto com o avanço
+local LUNGE_SHAKE_DEGREES = 2.5
 local MODEL_SIZE = Vector3.new(4, 4, 4)
+local MODEL_LIGHT_BRIGHTNESS = 3 -- o inimigo se ilumina: aparece mesmo no blackout
+local MODEL_LIGHT_RANGE = 14
 local COLOR_SQUARE = Color3.fromRGB(40, 90, 255)
 local COLOR_TRIANGLE = Color3.fromRGB(230, 40, 40)
 local COLOR_EYES = Color3.fromRGB(5, 5, 8)
+local EYE_SIZE = Vector3.new(0.9, 0.9, 0.2)
+local EYE_OFFSET_X = 1.1
+local EYE_OFFSET_Y = 0.7
 -- Hexágono (3.8.4)
-local HEX_EXPAND_SECONDS = 1.2
-local HEX_BREACH_AT_SECONDS = 1.6
-local HEX_FULL_SIZE = UDim2.fromScale(1.2, 1.2)
-local HEX_TRANSPARENCY_MIN = 0.1
-local HEX_TRANSPARENCY_MAX = 0.55
+local HEX_EXPAND_SECONDS = 1.4
+local HEX_FLASH_AT_SECONDS = 1.4 -- estouro: estática e ciano tomam a tela
+local HEX_BREACH_AT_SECONDS = 1.7
+local HEX_RADIUS = 0.5 -- raio de cada hexágono da grade, em studs (antes de escalar)
+local HEX_COLUMNS = 7
+local HEX_ROWS = 5
+local HEX_LINE = 0.06
+local HEX_START_SCALE = 0.05
+local HEX_END_SCALE = 1.8
+local HEX_END_DISTANCE = 3 -- studs à frente da cadeira
+local HEX_FOV = 55
+local HEX_SHAKE_DEGREES = 1.2
+local HEX_TONE_START_SPEED = 0.5
+local HEX_TONE_END_SPEED = 2.2
+local HEX_FLASH_TRANSPARENCY_MIN = 0.1
+local HEX_FLASH_TRANSPARENCY_MAX = 0.55
+local COLOR_HEX = Color3.fromRGB(70, 220, 255)
 
 local JumpscareController = {}
 
@@ -50,37 +72,25 @@ local ui = JumpscareGui.build(playerGui)
 local rng = Random.new() -- apresentação, não lógica de jogo (Apêndice C.6)
 local currentNight = 1
 local token = 0 -- invalida coreografia pendente
-local model: Model? = nil
-local staticConn: RBXScriptConnection? = nil
-local lungeConn: RBXScriptConnection? = nil
-local hexConn: RBXScriptConnection? = nil
-local hexTween: Tween? = nil
+local models: { Model } = {}
+local connections: { RBXScriptConnection } = {}
+local tweens: { Tween } = {}
 local buttonsArmed = false
 
-local function disconnect(connection: RBXScriptConnection?)
-    if connection then
+-- Para tudo o que anima durante o jumpscare
+local function stopEffects()
+    for _, connection in connections do
         connection:Disconnect()
     end
-end
-
--- Para tudo o que anima durante o jumpscare (estática, avanço do modelo, ciano do Hexágono)
-local function stopEffects()
-    disconnect(staticConn)
-    staticConn = nil
-    disconnect(lungeConn)
-    lungeConn = nil
-    disconnect(hexConn)
-    hexConn = nil
-    local tween = hexTween
-    if tween then
+    table.clear(connections)
+    for _, tween in tweens do
         tween:Cancel()
-        hexTween = nil
     end
-    local current = model
-    if current then
-        current:Destroy()
-        model = nil
+    table.clear(tweens)
+    for _, model in models do
+        model:Destroy()
     end
+    table.clear(models)
     ui.static.Visible = false
     ui.hexGrid.Visible = false
     ui.breached.Visible = false
@@ -107,56 +117,116 @@ local function makePart(className: string, size: Vector3, color: Color3): BasePa
     return part
 end
 
--- Cubo azul com dois olhos pretos (Quadrado) ou prisma vermelho (Triângulo). Criado só no cliente.
-local function buildModel(enemy: Types.Enemy): Model
-    local result = Instance.new("Model")
-    result.Name = "Jumpscare"
-    local body: BasePart
-    if enemy == Enums.Enemy.Square then
-        body = makePart("Part", MODEL_SIZE, COLOR_SQUARE)
-        body.Parent = result
-        for _, dx in { -1, 1 } do
-            local eye = makePart("Part", Vector3.new(0.9, 0.9, 0.2), COLOR_EYES)
-            eye.CFrame = body.CFrame * CFrame.new(dx * 1.1, 0.7, -MODEL_SIZE.Z / 2)
-            eye.Parent = result
-        end
-    else
-        body = makePart("WedgePart", MODEL_SIZE, COLOR_TRIANGLE)
-        body.Parent = result
+-- Modelo com uma raiz invisível na origem (pivô) e as partes posicionadas em volta dela
+local function newModel(name: string): (Model, BasePart)
+    local model = Instance.new("Model")
+    model.Name = name
+    local root = makePart("Part", Vector3.new(0.2, 0.2, 0.2), COLOR_EYES)
+    root.Name = "Root"
+    root.Transparency = 1
+    root.Parent = model
+    model.PrimaryPart = root
+    table.insert(models, model)
+    return model, root
+end
+
+local function addLight(parent: BasePart, color: Color3)
+    local light = Instance.new("PointLight")
+    light.Color = color
+    light.Brightness = MODEL_LIGHT_BRIGHTNESS
+    light.Range = MODEL_LIGHT_RANGE
+    light.Parent = parent
+end
+
+-- Quadrado Azul (3.8.1): cubo com dois olhos pretos na face da frente (−Z)
+local function buildSquare(): Model
+    local model, root = newModel("Jumpscare")
+    local body = makePart("Part", MODEL_SIZE, COLOR_SQUARE)
+    body.Parent = model
+    for _, dx in { -1, 1 } do
+        local eye = makePart("Part", EYE_SIZE, COLOR_EYES)
+        eye.CFrame = CFrame.new(dx * EYE_OFFSET_X, EYE_OFFSET_Y, -MODEL_SIZE.Z / 2)
+        eye.Parent = model
     end
-    result.PrimaryPart = body
-    result.Parent = Workspace
-    return result
+    addLight(root, COLOR_SQUARE)
+    return model
+end
+
+-- Triângulo Vermelho (3.8.2): prisma de duas cunhas encostadas; o triângulo fica no plano XY, virado para a câmera
+local function buildTriangle(): Model
+    local model, root = newModel("Jumpscare")
+    local base = MODEL_SIZE.X
+    local halfBase = base / 2
+    local thickness = MODEL_SIZE.Z / 2
+    for _, sign in { -1, 1 } do
+        local half = makePart("WedgePart", Vector3.new(thickness, MODEL_SIZE.Y, halfBase), COLOR_TRIANGLE)
+        -- a face vertical da cunha (lado +Z dela) encosta no centro; a rampa desce para fora
+        half.CFrame = CFrame.new(sign * base / 4, 0, 0) * CFrame.Angles(0, -sign * math.pi / 2, 0)
+        half.Parent = model
+    end
+    addLight(root, COLOR_TRIANGLE)
+    return model
+end
+
+-- Grade hexagonal plana (plano XY), cada hexágono com 6 arestas de neon ciano
+local function buildHexGrid(): Model
+    local model = newModel("HexGrid")
+    local columnStep = math.sqrt(3) * HEX_RADIUS
+    local rowStep = 1.5 * HEX_RADIUS
+    for row = 0, HEX_ROWS - 1 do
+        for column = 0, HEX_COLUMNS - 1 do
+            local cx = (column - (HEX_COLUMNS - 1) / 2) * columnStep + (if row % 2 == 1 then columnStep / 2 else 0)
+            local cy = (row - (HEX_ROWS - 1) / 2) * rowStep
+            for k = 0, 5 do
+                local a1 = math.rad(60 * k + 30)
+                local a2 = math.rad(60 * (k + 1) + 30)
+                local x1, y1 = cx + HEX_RADIUS * math.cos(a1), cy + HEX_RADIUS * math.sin(a1)
+                local x2, y2 = cx + HEX_RADIUS * math.cos(a2), cy + HEX_RADIUS * math.sin(a2)
+                local edge = makePart("Part", Vector3.new(HEX_RADIUS, HEX_LINE, HEX_LINE), COLOR_HEX)
+                edge.Material = Enum.Material.Neon
+                edge.CFrame = CFrame.new((x1 + x2) / 2, (y1 + y2) / 2, 0)
+                    * CFrame.Angles(0, 0, math.atan2(y2 - y1, x2 - x1))
+                edge.Parent = model
+            end
+        end
+    end
+    return model
 end
 
 local function startStatic()
     ui.static.Visible = true
-    staticConn = RunService.RenderStepped:Connect(function()
-        local gray = rng:NextInteger(STATIC_GRAY_MIN, STATIC_GRAY_MAX)
-        ui.static.BackgroundColor3 = Color3.fromRGB(gray, gray, gray)
-        ui.static.BackgroundTransparency = rng:NextNumber(STATIC_TRANSPARENCY_MIN, STATIC_TRANSPARENCY_MAX)
-    end)
+    table.insert(
+        connections,
+        RunService.RenderStepped:Connect(function()
+            local gray = rng:NextInteger(STATIC_GRAY_MIN, STATIC_GRAY_MAX)
+            ui.static.BackgroundColor3 = Color3.fromRGB(gray, gray, gray)
+            ui.static.BackgroundTransparency = rng:NextNumber(STATIC_TRANSPARENCY_MIN, STATIC_TRANSPARENCY_MAX)
+        end)
+    )
 end
 
 local function lunge(target: Model, startCFrame: CFrame, endCFrame: CFrame)
     local elapsed = 0
     target:PivotTo(startCFrame)
-    lungeConn = RunService.RenderStepped:Connect(function(dt: number)
+    local connection: RBXScriptConnection
+    connection = RunService.RenderStepped:Connect(function(dt: number)
         elapsed += dt
         local alpha = math.clamp(elapsed / LUNGE_SECONDS, 0, 1)
         local eased = 1 - (1 - alpha) * (1 - alpha) -- ease-out: começa rápido, encosta devagar
         target:PivotTo(startCFrame:Lerp(endCFrame, eased))
         if alpha >= 1 then
-            disconnect(lungeConn)
-            lungeConn = nil
+            connection:Disconnect()
         end
     end)
+    table.insert(connections, connection)
 end
 
 -- Físicos (3.8.1, 3.8.2): a câmera é forçada a olhar para a porta; o inimigo sai da soleira até a tela
 local function physicalScare(enemy: Types.Enemy, side: Types.Side)
     local sign = if side == Enums.Side.Left then -1 else 1
     OfficeCamera.lockYaw(sign * GameConfig.Camera.maxYawDegrees)
+    OfficeCamera.setShake(LUNGE_SHAKE_DEGREES)
+    OfficeCamera.tweenFieldOfView(LUNGE_FOV, LUNGE_SECONDS)
     local office = Workspace:WaitForChild(Enums.Office.Model)
     local doorway = office
         :WaitForChild(Enums.Office.Doors)
@@ -164,24 +234,69 @@ local function physicalScare(enemy: Types.Enemy, side: Types.Side)
         :WaitForChild(Enums.Office.SoundAnchor) :: BasePart
     local endCFrame = OfficeCamera.getCFrame() * LUNGE_END_OFFSET * CFrame.Angles(0, math.pi, 0)
     local startCFrame = CFrame.new(doorway.Position) * endCFrame.Rotation
-    local built = buildModel(enemy)
-    model = built
-    lunge(built, startCFrame, endCFrame)
+    local model = if enemy == Enums.Enemy.Square then buildSquare() else buildTriangle()
+    model.Parent = Workspace
+    lunge(model, startCFrame, endCFrame)
+    startStatic()
 end
 
--- Hexágono (3.8.4): não é um monstro entrando; o ciano toma a tela e termina em FIREWALL BREACHED
+-- Hexágono (3.8.4): não é um monstro entrando; o sistema toma a tela a partir do monitor
 local function hexagonScare(mine: number)
-    ui.hexGrid.Size = UDim2.fromScale(0, 0)
-    ui.hexGrid.Visible = true
-    local tween = TweenService:Create(
-        ui.hexGrid,
-        TweenInfo.new(HEX_EXPAND_SECONDS, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-        { Size = HEX_FULL_SIZE }
-    )
-    tween:Play()
-    hexTween = tween
-    hexConn = RunService.RenderStepped:Connect(function()
-        ui.hexGrid.BackgroundTransparency = rng:NextNumber(HEX_TRANSPARENCY_MIN, HEX_TRANSPARENCY_MAX)
+    OfficeCamera.lockYaw(0, false)
+    OfficeCamera.setShake(HEX_SHAKE_DEGREES)
+    OfficeCamera.tweenFieldOfView(HEX_FOV, HEX_EXPAND_SECONDS)
+
+    local office = Workspace:WaitForChild(Enums.Office.Model)
+    local monitor = office:WaitForChild(Enums.Office.Monitor) :: BasePart
+    local base = OfficeCamera.getBaseCFrame()
+    local from = monitor.Position
+    local to = base.Position + base.LookVector * HEX_END_DISTANCE
+    local grid = buildHexGrid()
+    grid.Parent = Workspace
+    grid:ScaleTo(HEX_START_SCALE)
+    grid:PivotTo(CFrame.lookAt(from, base.Position))
+    local elapsed = 0
+    local connection: RBXScriptConnection
+    connection = RunService.RenderStepped:Connect(function(dt: number)
+        elapsed += dt
+        local alpha = math.clamp(elapsed / HEX_EXPAND_SECONDS, 0, 1)
+        local eased = alpha * alpha -- ease-in: começa devagar e acelera para cima do jogador
+        local position = from:Lerp(to, eased)
+        grid:ScaleTo(HEX_START_SCALE + (HEX_END_SCALE - HEX_START_SCALE) * eased)
+        grid:PivotTo(CFrame.lookAt(position, base.Position))
+        if alpha >= 1 then
+            connection:Disconnect()
+        end
+    end)
+    table.insert(connections, connection)
+
+    -- "um tom digital sobe até estourar"
+    local tone = AudioController.play(Enums.Cue.JumpscareHexagon)
+    if tone then
+        tone.PlaybackSpeed = HEX_TONE_START_SPEED
+        local rise = TweenService:Create(
+            tone,
+            TweenInfo.new(HEX_EXPAND_SECONDS, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+            { PlaybackSpeed = HEX_TONE_END_SPEED }
+        )
+        rise:Play()
+        table.insert(tweens, rise)
+    end
+
+    task.delay(HEX_FLASH_AT_SECONDS, function()
+        if mine ~= token then
+            return
+        end
+        startStatic()
+        ui.hexGrid.Size = UDim2.fromScale(1, 1)
+        ui.hexGrid.Visible = true
+        table.insert(
+            connections,
+            RunService.RenderStepped:Connect(function()
+                ui.hexGrid.BackgroundTransparency =
+                    rng:NextNumber(HEX_FLASH_TRANSPARENCY_MIN, HEX_FLASH_TRANSPARENCY_MAX)
+            end)
+        )
     end)
     task.delay(HEX_BREACH_AT_SECONDS, function()
         if mine == token then
@@ -192,6 +307,7 @@ end
 
 local function showGameOver(enemy: Types.Enemy)
     stopEffects()
+    OfficeCamera.setShake(0)
     ui.title.Text = string.format(Strings.EndScreens.criticalFailure, currentNight)
     ui.anomaly.Text = string.format(Strings.EndScreens.anomaly, Strings.EnemyName[enemy] or enemy)
     ui.panel.Visible = true
@@ -207,18 +323,13 @@ local function onJumpscare(payload: Types.JumpscarePayload)
     local enemy: Types.Enemy = payload.enemy -- anotado: o checador alarga o literal para string sem isto
     if enemy == Enums.Enemy.Square then
         physicalScare(enemy, Enums.Side.Left)
+        AudioController.play(Enums.Cue.JumpscareSquare)
     elseif enemy == Enums.Enemy.Triangle then
         physicalScare(enemy, Enums.Side.Right)
-    elseif enemy == Enums.Enemy.Hexagon then
+        AudioController.play(Enums.Cue.JumpscareTriangle)
+    else
         hexagonScare(mine)
     end
-
-    startStatic()
-    local cue = if enemy == Enums.Enemy.Square
-        then Enums.Cue.JumpscareSquare
-        elseif enemy == Enums.Enemy.Triangle then Enums.Cue.JumpscareTriangle
-        else Enums.Cue.JumpscareHexagon
-    AudioController.play(cue)
 
     -- task.delay é apresentação (Apêndice C.5); a sessão já acabou no servidor
     task.delay(JUMPSCARE_SECONDS, function()

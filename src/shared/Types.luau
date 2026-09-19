@@ -90,6 +90,7 @@ export type SetTerminalOpenPayload = { open: boolean }
 export type TerminalCommandPayload = { text: string }
 export type PuzzlePickPayload = { gate: string }
 export type MinigamePickPayload = { index: number }
+export type UpdateSettingsPayload = { masterVolume: number } -- 0..1
 
 -- Servidor → Cliente
 export type SaveLoadedPayload = { save: SaveData }

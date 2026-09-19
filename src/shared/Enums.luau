@@ -150,6 +150,7 @@ Enums.Office = table.freeze({
     Door = "Door",
     Button = "Button",
     SoundAnchor = "SoundAnchor",
+    Monitor = "Monitor",
     Silhouette = "Silhouette",
     Lights = "Lights",
     WallClock = "WallClock",
@@ -162,6 +163,7 @@ Enums.Attribute = table.freeze({
     OpenY = "OpenY", -- Y da porta aberta (dentro da parede)
     ClosedY = "ClosedY", -- Y da porta fechada
     Interact = "Interact", -- Enums.Interact nas partes clicáveis
+    VisibleTransparency = "VisibleTransparency", -- silhuetas: transparência quando visíveis
 })
 
 -- O que um clique/toque em objeto da sala significa (5.11)
@@ -188,6 +190,7 @@ Enums.Remote = table.freeze({
     PuzzlePick = "PuzzlePick",
     PuzzleCancel = "PuzzleCancel",
     TutorialAdvance = "TutorialAdvance",
+    UpdateSettings = "UpdateSettings",
     -- Servidor → Cliente (estado/eventos)
     SaveLoaded = "SaveLoaded",
     NightStarted = "NightStarted",

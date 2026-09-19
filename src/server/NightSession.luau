@@ -87,6 +87,9 @@ local function levelsFor(night: number): Types.NightLevels
                 levels.hexagon = level
             end
         end
+        if GameConfig.Debug.forceSonar then
+            levels.sonar = true
+        end
     end
     return levels
 end

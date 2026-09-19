@@ -127,9 +127,9 @@ function TabletGui.build(parent: Instance): Tablet
     local map = UiKit.frame({
         name = "Map",
         parent = gui,
-        position = UDim2.fromScale(0.5, 0.41),
+        position = UDim2.fromScale(0.5, 0.39),
         anchor = Vector2.new(0.5, 0.5),
-        size = UDim2.fromScale(0.92, 0.56),
+        size = UDim2.fromScale(0.92, 0.52),
         border = true,
     })
     local nodes: { [string]: NodeView } = {}
@@ -140,9 +140,9 @@ function TabletGui.build(parent: Instance): Tablet
     local pingButton = UiKit.button({
         name = "Ping",
         parent = gui,
-        position = UDim2.fromScale(0.5, 0.75),
+        position = UDim2.fromScale(0.5, 0.73),
         anchor = Vector2.new(0.5, 0.5),
-        size = UDim2.fromScale(0.62, 0.1),
+        size = UDim2.fromScale(0.62, 0.13), -- ≈ 49 px no iPhone SE (5.11)
         bg = C.panel,
         border = true,
         text = Strings.Tablet.pingButton,
@@ -152,7 +152,7 @@ function TabletGui.build(parent: Instance): Tablet
     local progress = UiKit.frame({
         name = "Progress",
         parent = gui,
-        position = UDim2.fromScale(0.5, 0.815),
+        position = UDim2.fromScale(0.5, 0.81),
         anchor = Vector2.new(0.5, 0.5),
         size = UDim2.fromScale(0.62, 0.012),
         bg = C.panel,
@@ -169,7 +169,7 @@ function TabletGui.build(parent: Instance): Tablet
     local status = UiKit.label({
         name = "Status",
         parent = gui,
-        position = UDim2.fromScale(0.5, 0.855),
+        position = UDim2.fromScale(0.5, 0.85),
         anchor = Vector2.new(0.5, 0.5),
         size = UDim2.fromScale(0.9, 0.045),
         text = Strings.Tablet.statusIdle,
@@ -179,7 +179,7 @@ function TabletGui.build(parent: Instance): Tablet
     local battery = UiKit.label({
         name = "Battery",
         parent = gui,
-        position = UDim2.fromScale(0.5, 0.9),
+        position = UDim2.fromScale(0.5, 0.895),
         anchor = Vector2.new(0.5, 0.5),
         size = UDim2.fromScale(0.9, 0.04),
         color = C.danger,

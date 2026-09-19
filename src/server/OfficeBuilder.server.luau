@@ -26,6 +26,12 @@ local DOOR_THICKNESS = 0.6
 local BUTTON_OFFSET_Z = 1 -- o botão fica logo ao sul da abertura, do lado de dentro
 local SILHOUETTE_SIZE = 3.5 -- cubo/prisma na soleira, do lado do corredor
 local SILHOUETTE_OFFSET = 1.9 -- distância da face externa da parede
+local SILHOUETTE_BODY_TRANSPARENCY = 0.35 -- semitransparente (3.4)
+local SILHOUETTE_EYE = 0.7
+local SILHOUETTE_EYE_DEPTH = 0.1
+local SILHOUETTE_EYE_Y = 0.55
+local SILHOUETTE_EYE_Z = 0.8
+local SILHOUETTE_PRISM_DEPTH = 2
 
 -- Corredores atrás das portas: escuros, com uma luz fraca ao longe
 local CORRIDOR_LENGTH = 30
@@ -53,6 +59,7 @@ local COLOR = {
     corridorLight = Color3.fromRGB(120, 140, 170),
     square = Color3.fromRGB(40, 90, 255), -- Quadrado Azul (3.8.1)
     triangle = Color3.fromRGB(230, 40, 40), -- Triângulo Vermelho (3.8.2)
+    eyes = Color3.fromRGB(5, 5, 8), -- "dois quadrados pretos" (3.8.1)
 }
 
 local function setup(p: BasePart, name: string, size: Vector3, position: Vector3, color: Color3, parent: Instance)
@@ -97,6 +104,16 @@ local function persistentModel(name: string): Model
     model.Name = name
     model.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
     return model
+end
+
+-- Parte de silhueta: invisível e sem colisão; o cliente usa o atributo para mostrá-la (EnemyVisual)
+local function hidden(p: BasePart, visibleTransparency: number): BasePart
+    p.Transparency = 1
+    p.CanCollide = false
+    p.CanQuery = false
+    p.CastShadow = false
+    p:SetAttribute(Enums.Attribute.VisibleTransparency, visibleTransparency)
+    return p
 end
 
 local function buildShell(parent: Instance)
@@ -205,23 +222,40 @@ local function buildDoor(parent: Instance, side: string)
         )
     )
 
-    -- Silhueta do inimigo na soleira (3.4, 3.5b): invisível até o servidor mandar EnemyVisual
-    local silhouetteX = sign * (ROOM_HALF_W + WALL_T + SILHOUETTE_OFFSET)
-    local silhouetteSize = Vector3.new(SILHOUETTE_SIZE, SILHOUETTE_SIZE, SILHOUETTE_SIZE)
-    local silhouettePos = Vector3.new(silhouetteX, FLOOR_TOP + SILHOUETTE_SIZE / 2, doorZ)
-    local silhouette: BasePart = if side == Enums.Side.Left
-        then part(Enums.Office.Silhouette, silhouetteSize, silhouettePos, COLOR.square, model)
-        else wedge(Enums.Office.Silhouette, silhouetteSize, silhouettePos, COLOR.triangle, model)
-    silhouette.CFrame = CFrame.new(silhouettePos) * CFrame.Angles(0, sign * math.pi / 2, 0)
-    silhouette.Transparency = 1
-    silhouette.CanCollide = false
-    silhouette.CanQuery = false
+    -- Silhueta do inimigo na soleira, do lado do corredor (3.4, 3.5b). Invisível até o servidor mandar
+    -- EnemyVisual. Quadrado: cubo azul com dois olhos pretos virados para a sala. Triângulo: prisma vermelho
+    -- de duas cunhas encostadas, com o triângulo virado para a sala.
+    local silhouette = persistentModel(Enums.Office.Silhouette)
+    local center =
+        Vector3.new(sign * (ROOM_HALF_W + WALL_T + SILHOUETTE_OFFSET), FLOOR_TOP + SILHOUETTE_SIZE / 2, doorZ)
+    local body: BasePart
+    if side == Enums.Side.Left then
+        local cube = Vector3.new(SILHOUETTE_SIZE, SILHOUETTE_SIZE, SILHOUETTE_SIZE)
+        body = hidden(part("Body", cube, center, COLOR.square, silhouette), SILHOUETTE_BODY_TRANSPARENCY)
+        local faceX = center.X - sign * (SILHOUETTE_SIZE / 2 + SILHOUETTE_EYE_DEPTH / 2)
+        local eyeSize = Vector3.new(SILHOUETTE_EYE_DEPTH, SILHOUETTE_EYE, SILHOUETTE_EYE)
+        for _, dz in { -1, 1 } do
+            local eyePos = Vector3.new(faceX, center.Y + SILHOUETTE_EYE_Y, center.Z + dz * SILHOUETTE_EYE_Z)
+            hidden(part("Eye", eyeSize, eyePos, COLOR.eyes, silhouette), 0)
+        end
+    else
+        local half = SILHOUETTE_SIZE / 2
+        local wedgeSize = Vector3.new(SILHOUETTE_PRISM_DEPTH, SILHOUETTE_SIZE, half)
+        local offset = Vector3.new(0, 0, half / 2)
+        -- A face vertical de cada cunha (lado +Z dela) encosta no centro; a rampa desce para fora
+        body =
+            hidden(wedge("Body", wedgeSize, center - offset, COLOR.triangle, silhouette), SILHOUETTE_BODY_TRANSPARENCY)
+        local back =
+            hidden(wedge("Body", wedgeSize, center + offset, COLOR.triangle, silhouette), SILHOUETTE_BODY_TRANSPARENCY)
+        back.CFrame = CFrame.new(back.Position) * CFrame.Angles(0, math.pi, 0)
+    end
     local glow = Instance.new("PointLight")
     glow.Enabled = false
     glow.Brightness = 0.8
     glow.Range = 9
     glow.Color = if side == Enums.Side.Left then COLOR.square else COLOR.triangle
-    glow.Parent = silhouette
+    glow.Parent = body
+    silhouette.Parent = model
 
     model.Parent = parent
 end
@@ -300,7 +334,7 @@ local function buildDesk(parent: Instance)
 
     -- Pontos de clique (5.11): terminal, manual e tablet. As fases 4 e 5 ligam cada um ao seu overlay.
     local monitor = part(
-        "Monitor",
+        Enums.Office.Monitor,
         Vector3.new(2.2, 1.6, 0.3),
         Vector3.new(-1.8, deskTop + 0.8, DESK_Z - 0.8),
         COLOR.monitor,

@@ -48,6 +48,7 @@ local GameConfig = {
         pingShowSeconds = 6,
         pingCooldownSeconds = 3,
         cameraBreakOrder = { "CAM1", "CAM4", "CAM2", "CAM3" },
+        sonarFlashSeconds = 0.5, -- noites com sonar: flash 3D no ping (3.5)
     },
     Circle = {
         tickSeconds = 15,
@@ -77,6 +78,9 @@ local GameConfig = {
     Puzzle = {
         closeAfterCorrectSeconds = 1.2, -- painel fecha depois do acerto (3.8.4)
         newTableAfterWrongSeconds = 1.4, -- nova tabela depois do erro (3.8.4)
+    },
+    Settings = {
+        maxUpdatesPerSecond = 5, -- rate limit de UpdateSettings (5.9)
     },
     -- Níveis por noite (7.4). Índice = noite (0 = tutorial, 1-7). "custom" é montada em runtime na Fase 7.
     Nights = {
@@ -118,6 +122,10 @@ local GameConfig = {
             generator_reset = "rbxassetid://9117882503", -- Power Up Accelerating Motors 1
             jumpscare_hexagon = "rbxassetid://9126001417", -- Static Squeaky Bursts Sharp Electric Charge
             virus_alert = "rbxassetid://9125557781", -- Fire Alarm High School Harsh Rhythmic Buzzer (loop)
+            ambient_hum = "rbxassetid://9125446564", -- Command Room Tone Deep Air Conditioning Hum (loop)
+            ambient_low_power = "rbxassetid://9125784811", -- Power Throb Tonal Hum Slow Pulse Electrical (loop)
+            dawn = "rbxassetid://9126073011", -- Synth Sparkle Tone High Pitch Bell Tone Ding
+            menu_glitch = "rbxassetid://9119584204", -- Static Many Various Length Bursts 26
         } :: { [string]: string },
         arrivalDuckAmount = 0.6,
         arrivalDuckSeconds = 1.5,
@@ -127,9 +135,10 @@ local GameConfig = {
         timeScale = 1, -- 5 = noite de 72s para testar. Só tem efeito em Studio (5.9).
         deterministicSeed = nil :: number?, -- número = RNG reproduzível. Só em Studio.
         logAI = false, -- imprime cada sorteio das IAs (Fase 3)
-        logSession = true, -- imprime boot, fases e fim de noite no Output
+        logSession = false, -- imprime boot, fases e fim de noite no Output
         deadCamerasAtStart = {} :: { string }, -- ex.: { "CAM1" } para testar "em nó cego". Só em Studio.
-        levelOverrides = { circle = 20 } :: { [string]: number }, -- ex.: { hexagon = 20 } para testar a Fase 5. Só em Studio.
+        levelOverrides = {} :: { [string]: number }, -- ex.: { hexagon = 20 } para testar a Fase 5. Só em Studio.
+        forceSonar = false, -- true liga o sonar 3D em qualquer noite, para testar a Fase 6. Só em Studio.
     },
 }
 

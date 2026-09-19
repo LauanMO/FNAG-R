@@ -27,6 +27,7 @@ local saves: { [Player]: Types.SaveData } = {}
 local toggleDoorLimiter = RateLimiter.new(GameConfig.Doors.maxTogglesPerSecond)
 local tabletLimiter = RateLimiter.new(GameConfig.Tablet.maxTogglesPerSecond)
 local terminalLimiter = RateLimiter.new(GameConfig.Terminal.maxTogglesPerSecond)
+local settingsLimiter = RateLimiter.new(GameConfig.Settings.maxUpdatesPerSecond)
 
 local function log(...: any)
     if GameConfig.Debug.logSession then
@@ -237,6 +238,20 @@ local function onMinigamePick(player: Player, payload: unknown)
     MinigameService.pick(session, index)
 end
 
+-- UpdateSettings { masterVolume } (Fase 6): número entre 0 e 1; vai para o save do jogador (3.14)
+local function onUpdateSettings(player: Player, payload: unknown)
+    local save = saves[player]
+    if not save or typeof(payload) ~= "table" or not settingsLimiter:allow(player) then
+        return
+    end
+    -- cast justificado: o payload vem do cliente e é validado campo a campo
+    local volume = (payload :: any).masterVolume
+    if typeof(volume) ~= "number" or volume ~= volume then -- volume ~= volume: rejeita NaN
+        return
+    end
+    save.settings.masterVolume = math.clamp(volume, 0, 1)
+end
+
 local function onPlayerAdded(player: Player)
     saves[player] = defaultSave()
     sendSave(player)
@@ -248,6 +263,7 @@ local function onPlayerRemoving(player: Player)
     toggleDoorLimiter:forget(player)
     tabletLimiter:forget(player)
     terminalLimiter:forget(player)
+    settingsLimiter:forget(player)
     TerminalService.forget(player)
 end
 
@@ -271,6 +287,7 @@ function NightService.init()
     Remotes.get(Enums.Remote.PuzzlePick).OnServerEvent:Connect(onPuzzlePick)
     Remotes.get(Enums.Remote.PuzzleCancel).OnServerEvent:Connect(onPuzzleCancel)
     Remotes.get(Enums.Remote.MinigamePick).OnServerEvent:Connect(onMinigamePick)
+    Remotes.get(Enums.Remote.UpdateSettings).OnServerEvent:Connect(onUpdateSettings)
     Remotes.get(Enums.Remote.ReturnToMenu).OnServerEvent:Connect(function(player: Player)
         endSession(player)
     end)
