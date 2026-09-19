@@ -25,6 +25,56 @@ Strings.Menu = table.freeze({
     saveUnavailable = "Save indisponível — progresso não será salvo",
 })
 
+-- Custom Night (3.13)
+Strings.CustomNight = table.freeze({
+    title = "CUSTOM NIGHT",
+    decrease = "−",
+    increase = "+",
+    maxAll = "20/20/20/20",
+    start = "INICIAR",
+    back = "VOLTAR",
+})
+
+-- Créditos depois da Noite 7 (B.7). [DECIDIR] conteúdo final com o time; por ora, o título e os créditos do rodapé.
+Strings.Credits = table.freeze({
+    title = "SIMULAÇÃO ENCERRADA",
+    lines = table.freeze({
+        "Five Nights at Geometry",
+        Strings.Menu.footer,
+        "Custom Night desbloqueada.",
+        "Obrigado por jogar.",
+    }),
+})
+
+-- B.6: falas da Unidade de Assistência de Debug na Noite 0, na ordem. O TutorialService indexa por número.
+Strings.Tutorial = table.freeze({
+    speaker = "UNIDADE DE ASSISTÊNCIA DE DEBUG",
+    continueHint = "▼",
+    lines = table.freeze({
+        "SISTEMA INICIADO.", -- 1
+        "Olá. Eu sou a sua unidade de assistência de debug.",
+        "Identifiquei que você foi escalado para validar o Geometry OS.",
+        "Não se preocupe, eu guiarei você pelos protocolos básicos de sobreviv... digo, de teste.",
+        "Primeiro, familiarize-se com o ambiente. Olhe para os dois lados.", -- 5
+        "Ótimo. Duas saídas. Duas... entradas.",
+        "Feche a porta esquerda. O botão está na parede.",
+        "Observe o consumo de energia no painel. Portas fechadas gastam a energia que você não tem.",
+        "Abra de novo. Você vai fechar só quando precisar.",
+        "Abra o tablet e emita um ping. Ele mostra onde as anomalias estão. Onde estavam, na verdade.", -- 10
+        "Uma anomalia no corredor esquerdo. Quando ela chegar à porta, você vai ouvir.",
+        "Agora. Feche a porta.",
+        "Rebatida. Ela volta ao palco e tenta de novo. Abra a porta para economizar.",
+        "Na mesa há um manual. Abra e leia a página 2. Vai precisar.",
+        "Simulando uma corrupção de sistema...", -- 15
+        "A porta direita travou. O manual diz o que fazer. O terminal está no monitor.",
+        "Reparado. Nas noites reais, você não terá tempo de ler. Decore.",
+        "Uma camada do firewall foi rompida. Digite restore_firewall e resolva o circuito.",
+        "Correto. Se o firewall chegar a zero, você terá vinte segundos. Não chegue a zero.",
+        "Você está pronto. Ou tão pronto quanto qualquer um estaria.", -- 20
+        "Boa sorte na Noite 1. Eu estarei... por perto.",
+    }),
+})
+
 -- Configurações do menu (Fase 6)
 Strings.Settings = table.freeze({
     title = "CONFIGURAÇÕES",
@@ -58,9 +108,9 @@ Strings.HUD = table.freeze({
 
 -- B.7
 Strings.EndScreens = table.freeze({
-    nightComplete = "NOITE %d CONCLUÍDA",
+    nightComplete = "%s CONCLUÍDA", -- %s = Strings.nightLabel
     simulationOver = "SIMULAÇÃO ENCERRADA",
-    criticalFailure = "FALHA CRÍTICA — NOITE %d",
+    criticalFailure = "FALHA CRÍTICA — %s", -- %s = Strings.nightLabel
     anomaly = "anomalia: %s",
     retry = "TENTAR DE NOVO",
     menu = "MENU",
@@ -296,6 +346,8 @@ end
 function Strings.nightLabel(night: number): string
     if night == 0 then
         return Strings.HUD.nightTutorial
+    elseif night < 0 then
+        return Strings.HUD.nightCustom
     end
     return string.format(Strings.HUD.night, night)
 end

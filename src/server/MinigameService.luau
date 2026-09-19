@@ -98,6 +98,9 @@ local function resolve(session: Session, success: boolean, timeout: boolean)
     s.minigame = nil
     session.scheduler:remove(Task.MinigameTimer)
     local camera = if success then nil else RadarService.killNextCamera(session)
+    if not success then
+        s.metrics.minigameErrors += 1
+    end
     local M = Strings.Minigame
     if success then
         session:echo(M.ok, Enums.EchoKind.Ok)

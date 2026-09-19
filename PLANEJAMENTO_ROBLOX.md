@@ -548,6 +548,8 @@ A Noite 0 não tem RNG. É uma sequência de passos guiados pela **Unidade de As
 
 A Noite 0 pode ser pulada no menu depois de concluída uma vez (`[Tutorial]` fica disponível no menu).
 
+**Como ficou (Fase 7):** o `TutorialService` divide os 8 passos em 16 sub-passos de uma espera cada (clique, olhar, porta, ping, página 2 do manual, reparo, puzzle). Na Noite 0 o relógio não anda e a energia não drena: quem encerra a noite é o roteiro, com uma vitória. Esperas da sala são conferidas no servidor; clique, olhar e página do manual vêm do cliente pelo `TutorialAdvance`, validado contra o passo atual. A caixa de diálogo fica no topo e por cima do tablet e do terminal, para o jogador ler enquanto usa; some com o manual aberto.
+
 ### 3.13 Progressão por noite
 
 Cada noite deve **introduzir algo** — o pilar contra "11 repetições da mesma coisa". O original planejava 11 noites; o port define **7 + Noite 0 + Custom Night** [AJUSTE].
@@ -575,8 +577,8 @@ Dados persistidos por jogador (chave `player_<UserId>`):
 ```lua
 {
     version = 1,
-    currentNight = 1,          -- noite que o [Continue] abre
-    maxNightUnlocked = 1,      -- maior noite alcançada (0 a 8; 8 = venceu a 7)
+    currentNight = 0,          -- noite que o [Continue] abre
+    maxNightUnlocked = 0,      -- maior noite alcançada (0 a 8; 8 = venceu a 7)
     tutorialDone = false,
     stats = {
         nightsWon = 0,
@@ -592,6 +594,8 @@ Dados persistidos por jogador (chave `player_<UserId>`):
 ```
 
 Regras: carrega no `PlayerAdded`, salva na vitória, na morte (só stats) e no `PlayerRemoving`. Salvar com `pcall` + 3 tentativas + backoff. `version` permite migrar o schema depois. Ver 5.10 para detalhes.
+
+**Progressão (Fase 7):** o save novo começa na Noite 0, porque New Game abre o tutorial (3.1). New Game zera `currentNight` para 0; vencer o tutorial marca `tutorialDone` e libera a Noite 1 sem voltar a noite de quem só está revendo o tutorial. Vencer a noite N (1-7) faz `currentNight = min(N+1, 7)` e `maxNightUnlocked = max(atual, N+1)`; depois da 7, Continue reabre a 7 e a Custom Night fica liberada. A Custom Night não mexe na progressão. Vitórias e mortes contam em `stats`; `bestTimeAlive` guarda os segundos de noite mais longos.
 
 ---
 
@@ -910,6 +914,8 @@ five-nights-at-geometry/
 ├── selene.toml
 ├── stylua.toml
 ├── assets/                          ← sons, imagens (referência; os IDs vão no config)
+├── tools/
+│   └── balance_sim.py               ← simulação de balanceamento (Fase 7, ver 7.9)
 └── src/
     ├── shared/                      → ReplicatedStorage/Shared
     │   ├── GameConfig.luau          ← TODOS os números (seção 7)
@@ -950,8 +956,11 @@ five-nights-at-geometry/
     │   ├── NotebookController.luau  ← manual
     │   ├── AudioController.luau     ← todos os sons, ducking, posicional
     │   ├── JumpscareController.luau
+    │   ├── EnemyModels.luau         ← modelos 3D dos quatro inimigos (jumpscares e palco do menu)
     │   ├── MenuController.luau
+    │   ├── MenuScene.luau           ← palco 3D do menu: inimigos girando, câmera orbitando
     │   ├── TutorialController.luau  ← visual novel da Noite 0
+    │   ├── CustomNightController.luau ← painel da Custom Night
     │   ├── InputController.luau     ← teclado / touch / gamepad → intenções
     │   └── ui/                      ← ScreenGuis construídas em código (UiKit, HudGui, MenuGui, DawnGui, ...)
     └── ui/                          → StarterGui (ScreenGuis construídos em código
@@ -1073,6 +1082,23 @@ local GameConfig = {
     Settings = {
         maxUpdatesPerSecond = 5,  -- rate limit de UpdateSettings (5.9)
     },
+    Save = {
+        storeName = "PlayerSave_v1",
+        version = 1,
+        retryDelays = { 1, 2, 4 },
+        minSecondsBetweenWrites = 6,
+        closeTimeoutSeconds = 25,
+    },
+    Tutorial = {
+        lookDegrees = 30,
+        typewriterSeconds = 0.035,
+        figureFadeSeconds = 4,
+        pollSeconds = 0.1,
+    },
+    CustomNight = {
+        maxLevel = 20,
+        presentationNight = 7,   -- volume do cue de chegada e sonar da Custom Night
+    },
     Puzzle = {
         closeAfterCorrectSeconds = 1.2,
         newTableAfterWrongSeconds = 1.4,
@@ -1103,6 +1129,8 @@ local GameConfig = {
         deadCamerasAtStart = {}, -- ex.: { "CAM1" } para testar "em nó cego" (Fase 4). Só em Studio.
         levelOverrides = {},     -- ex.: { hexagon = 20 } para testar hackers em qualquer noite. Só em Studio.
         forceSonar = false,      -- liga o sonar 3D em qualquer noite. Só em Studio.
+        unlockAllNights = false, -- libera todas as noites e a Custom Night. Só em Studio.
+        logMetrics = false,      -- imprime as métricas de 7.8 no fim de cada noite
     },
 }
 return table.freeze(GameConfig)  -- na prática, congelamento recursivo (deepFreeze)
@@ -1224,7 +1252,7 @@ Todos são `RemoteEvent`, criados em `ReplicatedStorage/Remotes` por `Remotes.lu
 | Remote | Payload | Validação no servidor |
 |---|---|---|
 | `ClientReady` | `{}` | Scripts do cliente carregaram; o servidor reenvia `SaveLoaded` (o do `PlayerAdded` pode chegar antes de o cliente existir) |
-| `StartNight` | `{ night: number }` | `night <= save.maxNightUnlocked`; `0..7` ou `"custom"` + níveis `0..20` |
+| `StartNight` | `{ night: number, newGame: boolean?, custom: {square, triangle, circle, hexagon}? }` | `night <= save.maxNightUnlocked` e `0..7`; `newGame` só com `night = 0`; `custom` exige ter vencido a 7 e quatro inteiros `0..20` (Custom Night usa `night = -1`) |
 | `ReturnToMenu` | `{}` | Destrói a sessão se houver |
 | `ToggleDoor` | `{ side: "left"\|"right" }` | Sessão em `running`; porta não `jammed`; não em blackout |
 | `SetTabletOpen` | `{ open: boolean }` | Não `camera_offline`; se blackout, bateria > 0 |
@@ -1241,7 +1269,7 @@ Todos são `RemoteEvent`, criados em `ReplicatedStorage/Remotes` por `Remotes.lu
 
 | Remote | Payload | Quando |
 |---|---|---|
-| `SaveLoaded` | `{ save: SaveData }` | Após PlayerAdded |
+| `SaveLoaded` | `{ save: SaveData, available: boolean }` | Depois do load e a cada fim de noite; `available = false` = modo sem save |
 | `NightStarted` | `{ night, config: NightLevels }` | Início do boot |
 | `NightPhase` | `{ phase }` | Toda mudança de fase |
 | `HourChanged` | `{ hour }` | A cada hora |
@@ -1272,7 +1300,7 @@ Todos são `RemoteEvent`, criados em `ReplicatedStorage/Remotes` por `Remotes.lu
 | `GeneratorUsed` | `{ punished: boolean, power, usesLeft }` | |
 | `Jumpscare` | `{ enemy: "square"\|"triangle"\|"hexagon" }` | |
 | `NightWon` | `{ night, nextNight }` | |
-| `TutorialStep` | `{ step, text: {string}, waitFor: string }` | Noite 0 |
+| `TutorialStep` | `{ step, lines: {string}, waitFor: string }` | Noite 0 |
 
 **Princípio:** o cliente nunca calcula estado a partir de eventos anteriores. Cada Remote traz o estado completo daquele subsistema. Se o cliente perder um evento, o próximo corrige.
 
@@ -1427,7 +1455,7 @@ Cliente: TerminalEcho → appenda linha, scroll; TerminalPalette → refaz botõ
 
 | ScreenGui | Elementos | Controller |
 |---|---|---|
-| `MenuGui` | título com glitch (RNG 1-15, >10 → 400ms de glitch a cada 5s), New Game, Continue, Tutorial, Custom Night (bloqueado), Configurações (volume), estática de fundo | `MenuController` |
+| `MenuGui` | palco 3D ao fundo (ver abaixo), título com glitch no alto à esquerda (RNG 1-15, >10 → 400ms de glitch a cada 5s), fileira de botões embaixo — Configurações (volume), Custom Night (bloqueado), Tutorial, New Game, Continue —, estática por cima | `MenuController`, `MenuScene` |
 | `HudGui` | relógio (`12:00 AM` / glitch), noite (`NOITE 3`), energia (% + barra + barrinhas de consumo), firewall (`▮▮▮▯▯`), lista de sistemas corrompidos (`[!] door_left_jammed`), banner de vírus + barra de 30s, banner de intrusão + contagem, aviso de gerador (`GERADOR: 1 uso`), botões mobile (portas, tablet, terminal, manual) | `HudController`, `DoorController` |
 | `TabletGui` | fundo com estática animada, mapa de nós (CAM1-4, DOOR L/R, ESCRITÓRIO), botão PING, visor de status, rodapé com firewall e energia, bateria interna em blackout | `TabletController` |
 | `TerminalGui` | saída rolável, linha de input com prompt, paleta de comandos, botão FECHAR; subviews: minigame (9 botões + timer), puzzle (tabela + 6 botões + feedback) | `TerminalController` |
@@ -1437,6 +1465,10 @@ Cliente: TerminalEcho → appenda linha, scroll; TerminalPalette → refaz botõ
 | `DawnGui` | `6:00 AM`, `NOITE N CONCLUÍDA` | `HudController` |
 
 Estética: monoespaçada (`Code` ou `RobotoMono`), fundo preto, verde/ciano/âmbar/vermelho como cores semânticas (ok/hacker/aviso/perigo), bordas de 1px, sem gradientes, estática como textura. É o visual do protótipo web e funciona.
+
+**Menu com palco 3D** [NOVO — pedido do time, 19/09/2026, com referência de menu de jogo de carro em que o carro gira e a câmera dá voltas]: o fundo do menu é o Palco da CAM 1. Os quatro inimigos flutuam e giram no lugar, cada um num pedestal com aro de neon na sua cor e um holofote em cima, e a câmera dá uma volta no palco a cada 45 s. O glitch do título também faz os holofotes piscarem e os inimigos tremerem. A ação principal fica em destaque (fundo verde, texto preto): `Continue` quando há noite salva, senão `New Game`.
+- `MenuScene` (cliente) monta a cena localmente, longe da sala e dentro de uma caixa escura que esconde céu e Baseplate. Ela só fica no `Workspace` enquanto o menu está aberto. Nesse tempo a câmera é do `MenuScene` e o `OfficeCamera` fica suspenso (`setActive(false)`); ao voltar, a cadeira olha para a frente.
+- `EnemyModels` (cliente) é a fonte única dos modelos 3D dos inimigos, usada pelo palco e pelos jumpscares. Cada inimigo é a própria forma extrudada, com a frente em −Z: Quadrado = cubo com olhos, Triângulo = prisma de duas cunhas, Círculo = disco amarelo, Hexágono = prisma hexagonal ciano (três blocos girados de 60°). Círculo e Hexágono ganham aqui a primeira forma 3D; até então só existiam no HUD e no jumpscare de grade.
 
 ### 5.13 Áudio — implementação
 
@@ -1586,14 +1618,16 @@ Maior fase. Dividir em 5a (Terminal + Manual + Hexágono + Puzzle) e 5b (Círcul
 
 ### Fase 7 — Tutorial, progressão, save, balanceamento
 
-- [ ] `TutorialService` + `TutorialController`: os 8 passos de 3.12.
-- [ ] `SaveService` com DataStore, retry, migração, modo sem save.
-- [ ] Continue lê o save real. Vitória salva. Morte salva stats.
-- [ ] Custom Night (desbloqueada após a 7): 4 sliders 0-20.
-- [ ] Tela de créditos após a Noite 7 [DECIDIR conteúdo].
+- [x] `TutorialService` + `TutorialController`: os 8 passos de 3.12 (16 sub-passos, ver 3.12).
+- [x] `SaveService` com DataStore, retry, migração, modo sem save e fila de writes.
+- [x] Continue lê o save real. Vitória salva. Morte salva stats.
+- [x] Custom Night (desbloqueada após a 7): 4 controles 0-20 com − e + (melhores que sliders no celular) e atalho 20/20/20/20.
+- [x] Tela de créditos após a Noite 7 — estrutura pronta em `Strings.Credits`; o conteúdo final segue [DECIDIR] com o time.
 - [ ] **Playtest de balanceamento:** 3 pessoas jogam as noites 1-4; anotar em que noite cada uma morreu pela primeira vez e por quê. Meta: primeira morte na Noite 3 ou 4. Ajustar a seção 7 e o `GameConfig`.
 
 **Aceite:** um jogador novo faz Noite 0 → 1 → 2 sem ajuda externa. Fechar o Roblox e voltar abre na noite certa. Custom Night 20/20/20/20 é jogável (e quase impossível).
+
+> Status 19/09/2026: implementada; aceite no Studio pendente, e o playtest com pessoas é do time. O save real exige o place publicado e "Enable Studio Access to API Services" ligado; sem isso o jogo entra em modo sem save e avisa no menu. O gerador de métricas de 7.8 é `Debug.logMetrics`. A simulação do Apêndice A está em 7.9, com propostas ainda não aplicadas.
 
 ### Fase 8 — Publicação
 
@@ -1690,6 +1724,33 @@ Registrar por partida (o `Debug.logAI` pode gerar isso):
 Sinais de desbalanceamento: energia final > 60% na Noite 4 (portas baratas demais); morte na Noite 1 ou 2 por mais de 50% dos testers (Quadrado forte demais ou cue baixo demais); `command not found` > 3 por noite (comandos difíceis demais — considerar aliases como `unjam left`).
 
 ---
+
+### 7.9 Simulação (Fase 7) e propostas [DECIDIR]
+
+`tools/balance_sim.py` roda só a IA e a energia contra um jogador simulado, lendo os números do `GameConfig`. Resultado com os valores atuais (300 noites por linha; "competente" reage em 0.8-2 s e perde 3-10% dos cues; "mediano" reage em 1.2-3 s, perde 8-20% dos cues e erra mais puzzle e minigame):
+
+| Noite | Vivo (competente) | Vivo (mediano) | Energia final (mediano) | Blackout (mediano) |
+|---|---|---|---|---|
+| 1 | 99% | 98% | 22% | 3% |
+| 2 | 95% | 88% | 20% | 2% |
+| 3 | 87% | 75% | 16% | 2% |
+| 4 | 76% | 55% | 14% | 4% |
+| 5 | 59% | 33% | 14% | 4% |
+| 6 | 36% | 10% | 13% | 2% |
+| 7 | 13% | 2% | 13% | 0% |
+
+Leituras:
+
+1. **A energia não escala com a noite.** Na soleira o inimigo só vai embora quando passa no d20, então a espera média é `tick / chance`. Somando as duas etapas até a porta, cada inimigo físico ativo deixa a porta fechada perto de um terço da noite, qualquer que seja o nível. Resultado: a Noite 1 termina com ~22%, não os ~45% do cenário 4.1, e a Noite 7 termina com quase o mesmo.
+2. **Quase toda morte é do Quadrado**, que dá só 5 s de reação. O Triângulo (8 s) mata menos de 7% das vezes; o Hexágono nunca matou, porque o jogador simulado restaura o firewall antes de zerar — o perigo real dele é travar a porta na hora errada.
+3. **A curva do jogador mediano bate com a meta da Fase 7** (primeira morte na Noite 3 ou 4) e despenca nas noites 6 e 7.
+
+Propostas (nenhuma aplicada; o playtest com pessoas decide):
+
+- **Energia, opção A (só números):** `drainPerDoor` 0.20 → 0.14 e `drainBase` 0.12 → 0.10. Energia final do mediano vai para ~35% na Noite 1 e ~25% na 7. A curva continua achatada, mas a Noite 1 passa a sobrar energia como 3.13 pede.
+- **Energia, opção B (regra, muda 5.7):** com a porta fechada, o inimigo na soleira é rebatido no tick seguinte, sem rolar o d20. Energia final do mediano vai de ~49% na Noite 1 a ~19% na 7 — a escassez cresce com a noite, como 3.13 descreve. Custa a tensão do "inimigo estacionado na porta" do cenário 4.1 e sobe um pouco as mortes (mais chegadas por noite).
+- **Fim da curva:** Quadrado 10/13/16 → 9/11/14 nas noites 5/6/7 leva o mediano de 33/10/2% para 37/18/5% de sobrevivência. Aumentar o volume do cue nas noites 6-7 rende menos (15% e 4%).
+- **Hexágono:** observar no playtest se ele é passivo demais para humanos; se for, subir os níveis das noites 5-7.
 
 ## 8. BUGS E INCONSISTÊNCIAS DO PROTÓTIPO WEB (NÃO PORTAR)
 
@@ -2011,7 +2072,7 @@ Falas da Unidade de Assistência de Debug. As quatro primeiras são as originais
 ### B.8 Menu
 
 - Título: `Five Nights at Geometry`
-- Botões: `New Game`, `Continue`, `Tutorial`, `Custom Night`, `Configurações`
+- Botões, da esquerda para a direita: `Configurações`, `Custom Night`, `Tutorial`, `New Game`, `Continue`
 - Rodapé: `© 2026 Arthur` (ajustar créditos do time)
 - Save indisponível: `Save indisponível — progresso não será salvo`
 
@@ -2036,4 +2097,4 @@ Falas da Unidade de Assistência de Debug. As quatro primeiras são as originais
 
 ---
 
-*Fim do documento. Próxima ação: validar a Fase 6 no Studio (aceite da seção 6, Device Emulator e audição dos sons); depois, Fase 7.*
+*Fim do documento. Próxima ação: validar a Fase 7 e o menu com palco 3D (5.12) no Studio, decidir as propostas de 7.9 com o playtest e seguir para a Fase 8 (publicação).*

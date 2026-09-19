@@ -11,6 +11,7 @@ UiKit.Color = table.freeze({
     bg = Color3.fromRGB(0, 0, 0),
     panel = Color3.fromRGB(8, 10, 8),
     panelHover = Color3.fromRGB(18, 30, 20),
+    primaryHover = Color3.fromRGB(150, 255, 190), -- botão principal com o mouse em cima
     text = Color3.fromRGB(210, 215, 210),
     dim = Color3.fromRGB(95, 100, 95),
     border = Color3.fromRGB(60, 95, 65),
@@ -39,6 +40,8 @@ export type Props = {
 }
 
 local ENABLED_ATTRIBUTE = "Enabled"
+local PRIMARY_ATTRIBUTE = "Primary"
+local REST_COLOR_ATTRIBUTE = "RestColor"
 local FIXED_TEXT_SIZE = 18 -- só vale quando scaled = false
 
 local function applyBox(inst: GuiObject, props: Props)
@@ -107,13 +110,37 @@ function UiKit.isEnabled(button: TextButton): boolean
     return button:GetAttribute(ENABLED_ATTRIBUTE) == true
 end
 
+-- Botão principal habilitado: fundo verde e texto preto (ver setPrimary)
+local function showsPrimary(button: TextButton): boolean
+    return button:GetAttribute(PRIMARY_ATTRIBUTE) == true and UiKit.isEnabled(button)
+end
+
+local function restColor(button: TextButton): Color3
+    if showsPrimary(button) then
+        return UiKit.Color.ok
+    end
+    local rest = button:GetAttribute(REST_COLOR_ATTRIBUTE)
+    return if typeof(rest) == "Color3" then rest else UiKit.Color.panel
+end
+
 -- Botão desabilitado: cinza, sem hover, sem foco de gamepad. Quem trata o clique confere isEnabled.
 function UiKit.setEnabled(button: TextButton, enabled: boolean)
     button:SetAttribute(ENABLED_ATTRIBUTE, enabled)
     button.Active = enabled
     button.Selectable = enabled
-    button.TextColor3 = if enabled then UiKit.Color.ok else UiKit.Color.dim
-    button.BorderColor3 = if enabled then UiKit.Color.border else UiKit.Color.dim
+    local primary = showsPrimary(button)
+    button.TextColor3 = if primary then UiKit.Color.bg elseif enabled then UiKit.Color.ok else UiKit.Color.dim
+    button.BorderColor3 = if primary then UiKit.Color.ok elseif enabled then UiKit.Color.border else UiKit.Color.dim
+    -- Só quem já passou por setPrimary tem o fundo repintado aqui; os outros botões mantêm o hover como estava
+    if button:GetAttribute(PRIMARY_ATTRIBUTE) ~= nil then
+        button.BackgroundColor3 = restColor(button)
+    end
+end
+
+-- Ação principal da tela (o "jogar" do menu): enquanto habilitado, fundo verde e texto preto
+function UiKit.setPrimary(button: TextButton, primary: boolean)
+    button:SetAttribute(PRIMARY_ATTRIBUTE, primary)
+    UiKit.setEnabled(button, UiKit.isEnabled(button))
 end
 
 function UiKit.button(props: Props): TextButton
@@ -122,14 +149,14 @@ function UiKit.button(props: Props): TextButton
     applyText(button, props)
     applyBox(button, props)
     button:SetAttribute(ENABLED_ATTRIBUTE, true)
-    local restingColor = props.bg or UiKit.Color.panel
+    button:SetAttribute(REST_COLOR_ATTRIBUTE, props.bg or UiKit.Color.panel)
     button.MouseEnter:Connect(function()
         if UiKit.isEnabled(button) then
-            button.BackgroundColor3 = UiKit.Color.panelHover
+            button.BackgroundColor3 = if showsPrimary(button) then UiKit.Color.primaryHover else UiKit.Color.panelHover
         end
     end)
     button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = restingColor
+        button.BackgroundColor3 = restColor(button)
     end)
     return button
 end

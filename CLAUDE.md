@@ -14,8 +14,10 @@ Regras:
 - Se o design mudar, mude o PLANEJAMENTO primeiro e depois o código — nunca o contrário.
 
 ## Estado atual
-- Fases 0 a 5b validadas no Studio. Fase 6 (áudio, jumpscares finais, menu, sonar, volume) implementada; aceite pendente.
-- Próxima: Fase 7 (tutorial, progressão, save em DataStore, balanceamento).
+- Fases 0 a 6 validadas no Studio. Fase 7 (tutorial, save em DataStore, progressão, Custom Night, créditos, métricas) implementada; aceite pendente.
+- Menu com palco 3D (PLANEJAMENTO 5.12): `MenuScene` assume a câmera enquanto o menu está aberto (`OfficeCamera.setActive`); modelos dos inimigos em `EnemyModels`. Aceite no Studio pendente.
+- Próxima: decidir as propostas de balanceamento (PLANEJAMENTO 7.9) com playtest e depois a Fase 8 (publicação).
+- Balanceamento: `python tools/balance_sim.py` lê o GameConfig; as regras de jogo estão reimplementadas nele, então mudança de regra no Luau exige mudar lá também.
 - Sons são placeholders escolhidos pelo nome; o time precisa ouvir e trocar no GameConfig.
 - Tablet, terminal e manual são telas exclusivas (`src/client/Overlay.luau`). Serviços registram IAs com `session:addAITask`.
 - Esc é reservado pelo Roblox: overlays fecham com a mesma tecla que abriu ou com o botão FECHAR.

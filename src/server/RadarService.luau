@@ -27,6 +27,10 @@ function RadarService.scan(session: Session): Types.PingResultPayload
             occupied[ai:node()] = true
         end
     end
+    -- Anomalias roteirizadas do tutorial (3.12): o radar as enxerga como qualquer outra
+    for node in s.scriptedNodes do
+        occupied[node] = true
+    end
 
     local nodes: { [string]: Types.NodeState } = {}
     local anomalies = 0
@@ -78,6 +82,7 @@ function RadarService.requestPing(session: Session): boolean
     session:fire(Enums.Remote.PingStarted, {})
     session.scheduler:after(PING_RESOLVE_TASK, GameConfig.Radar.pingProcessSeconds, function()
         local result = RadarService.scan(session)
+        s.pingCount += 1
         logScan(result)
         session:fire(Enums.Remote.PingResult, result)
         local cooldown = GameConfig.Radar.pingShowSeconds + GameConfig.Radar.pingCooldownSeconds

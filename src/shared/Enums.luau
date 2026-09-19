@@ -17,6 +17,24 @@ Enums.Side = table.freeze({
     Right = "right" :: "right",
 })
 
+-- Noites especiais (3.1, 3.12, 3.13). As normais são 1..#GameConfig.Nights.
+Enums.Night = table.freeze({
+    Tutorial = 0,
+    Custom = -1, -- Custom Night: níveis escolhidos pelo jogador
+})
+
+-- O que cada passo da Noite 0 espera (3.12). Click, Look e NotebookPage2 são reportados pelo cliente.
+Enums.TutorialWait = table.freeze({
+    Click = "click",
+    Look = "look",
+    DoorLeftClosed = "door_left_closed",
+    DoorLeftOpen = "door_left_open",
+    Ping = "ping",
+    NotebookPage2 = "notebook_page2",
+    RepairDoorRight = "repair_door_right",
+    Puzzle = "puzzle",
+})
+
 Enums.Enemy = table.freeze({
     Square = "square" :: "square",
     Triangle = "triangle" :: "triangle",

@@ -10,6 +10,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Enums = require(Shared:WaitForChild("Enums"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
+local Signal = require(Shared:WaitForChild("Signal"))
 local Strings = require(Shared:WaitForChild("Strings"))
 local Types = require(Shared:WaitForChild("Types"))
 local UiKit = require(script.Parent.ui.UiKit)
@@ -23,6 +24,9 @@ local TEXT_SIZE_MIN = 14
 local TEXT_SIZE_MAX = 26
 
 local NotebookController = {}
+
+-- Página que acabou de aparecer (a Noite 0 espera a página 2, 3.12)
+NotebookController.pageShown = Signal.new() :: Signal.Signal<number>
 
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 local ui = NotebookGui.build(playerGui)
@@ -65,6 +69,7 @@ local function render()
     ui.pageLabel.Text = string.format(Strings.Manual.pageOf, page, #pages)
     UiKit.setEnabled(ui.prevButton, page > 1)
     UiKit.setEnabled(ui.nextButton, page < #pages)
+    NotebookController.pageShown:Fire(page)
 end
 
 local function setOpenLocal(value: boolean)

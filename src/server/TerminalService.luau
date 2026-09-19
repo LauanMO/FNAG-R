@@ -111,10 +111,13 @@ function TerminalService.handle(session: Session, player: Player, payload: unkno
     local command = Commands.resolve(text)
     if command == nil then
         if Commands.normalize(text) ~= "" then
+            s.metrics.commands += 1
+            s.metrics.commandsNotFound += 1
             session:echo(Strings.Terminal.notFound, Enums.EchoKind.Err) -- sem repetir o texto do jogador
         end
         return
     end
+    s.metrics.commands += 1
     session:echo(Strings.Terminal.prompt .. " " .. command, Enums.EchoKind.Echo)
     local handler = HANDLERS[command]
     if handler then

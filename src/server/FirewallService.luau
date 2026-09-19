@@ -87,6 +87,14 @@ local function corrupt(session: Session, system: string)
     session:alert(string.format(Strings.Terminal.alertCorrupted, system), Enums.EchoKind.Err)
 end
 
+-- Corrompe um sistema específico, fora do sorteio do Hexágono (o tutorial trava a porta direita, 3.12)
+function FirewallService.corruptSystem(session: Session, system: string)
+    if not session.state.corrupted[system] then
+        corrupt(session, system)
+        session:firePalette()
+    end
+end
+
 -- Comando de reparo (3.6). Só funciona com o sistema corrompido; senão, [WARN].
 function FirewallService.repair(session: Session, system: string): { Line }
     local s = session.state
@@ -139,7 +147,7 @@ local function startIntrusion(session: Session)
 end
 
 -- O Hexágono passou no teste (3.8.4): −1 camada e um sistema íntegro corrompido. Em zero, intrusão.
-function FirewallService.breakLayer(session: Session)
+function FirewallService.breakLayer(session: Session, corruptSystem: boolean?)
     local s = session.state
     local H = GameConfig.Hexagon
     if s.firewallLayers <= 0 then
@@ -155,7 +163,7 @@ function FirewallService.breakLayer(session: Session)
             table.insert(intact, system)
         end
     end
-    if #intact > 0 then
+    if corruptSystem ~= false and #intact > 0 then
         corrupt(session, intact[session.rng:NextInteger(1, #intact)])
     end
     if s.firewallLayers == 0 then
@@ -239,6 +247,7 @@ function FirewallService.puzzlePick(session: Session, gate: string)
     -- 3.12: erros não punem na Noite 0 (tutorial)
     local penalty = if s.night == 0 then 0 else GameConfig.Power.puzzlePenalty
     puzzle.locked = true
+    s.metrics.puzzleErrors += 1
     session:fire(
         Enums.Remote.PuzzleResult,
         { correct = false, gate = gate, layers = s.firewallLayers, penalty = penalty } :: Types.PuzzleResultPayload

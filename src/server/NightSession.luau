@@ -4,6 +4,7 @@
 -- As IAs físicas nascem aqui; serviços registram as suas por addAITask (Hexágono: FirewallService).
 -- Tudo que muda estado dispara o Remote correspondente (5.6).
 
+local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
@@ -47,6 +48,7 @@ type Fields = {
     destroyed: boolean,
     patrols: { PatrolAI.PatrolAI }, -- Quadrado e Triângulo, na ordem de registro
     aiTasks: { AITask }, -- IAs registradas por serviços; entram no Scheduler no fim do boot
+    scripted: boolean, -- Noite 0 (3.12): sem relógio nem dreno; o TutorialService conduz a noite
 }
 
 export type NightSession = typeof(setmetatable({} :: Fields, NightSession))
@@ -70,11 +72,19 @@ local function log(...: any)
     end
 end
 
--- Níveis da noite (7.4). Em Studio, Debug.levelOverrides troca níveis para testar (ex.: { hexagon = 20 }).
-local function levelsFor(night: number): Types.NightLevels
-    local base = GameConfig.Nights[night]
+-- Níveis da noite (7.4). A Custom Night (3.13) usa os níveis do jogador com o volume de cue e o sonar da
+-- noite CustomNight.presentationNight. Em Studio, Debug.levelOverrides troca níveis para testar.
+local function levelsFor(night: number, custom: Types.CustomLevels?): Types.NightLevels
+    local baseNight = if custom then GameConfig.CustomNight.presentationNight else night
+    local base = GameConfig.Nights[baseNight]
     assert(base ~= nil, `NightSession: noite inválida ({night})`)
     local levels: Types.NightLevels = table.clone(base)
+    if custom then
+        levels.square = custom.square
+        levels.triangle = custom.triangle
+        levels.circle = custom.circle
+        levels.hexagon = custom.hexagon
+    end
     if RunService:IsStudio() then
         for name, level in GameConfig.Debug.levelOverrides do
             if name == Enums.Enemy.Square then
@@ -111,8 +121,21 @@ local function line(text: string, kind: Types.EchoKind): Types.TerminalLine
     return { text = text, kind = kind }
 end
 
-function NightSession.new(players: { Player }, night: number): NightSession
-    local levels = levelsFor(night)
+local function newMetrics(): Types.NightMetrics
+    return {
+        doorCloses = { left = 0, right = 0 },
+        doorClosedSeconds = { left = 0, right = 0 },
+        doorClosedSince = {},
+        commands = 0,
+        commandsNotFound = 0,
+        minigameErrors = 0,
+        puzzleErrors = 0,
+        blackoutAt = nil,
+    }
+end
+
+function NightSession.new(players: { Player }, night: number, custom: Types.CustomLevels?): NightSession
+    local levels = levelsFor(night, custom)
 
     local state: Types.NightState = {
         night = night,
@@ -138,6 +161,10 @@ function NightSession.new(players: { Player }, night: number): NightSession
         puzzle = nil,
         restoreCooldown = 0,
         pingBusy = false,
+        pingCount = 0,
+        scriptedNodes = {},
+        tutorial = nil,
+        metrics = newMetrics(),
         ai = {},
     }
     if RunService:IsStudio() then
@@ -157,6 +184,7 @@ function NightSession.new(players: { Player }, night: number): NightSession
             destroyed = false,
             patrols = {},
             aiTasks = {},
+            scripted = night == Enums.Night.Tutorial,
         } :: Fields,
         NightSession
     )
@@ -279,12 +307,15 @@ function NightSession.beginRunning(self: NightSession)
     -- fireTabletState() no start() rodou durante o boot (tabletAvailable() = false); reenvia agora que
     -- a fase virou "running", senão o tablet fica preso em "indisponível" até o próximo evento (blackout).
     self:fireTabletState()
-    self.scheduler:every(NightSession.Task.Clock, GameConfig.Night.clockTickSeconds, function()
-        self:tickClock()
-    end)
-    self.scheduler:every(NightSession.Task.Power, GameConfig.Power.tickSeconds, function()
-        self:tickPower()
-    end)
+    -- Na Noite 0 o relógio não anda e a energia não drena: o roteiro decide quando a noite acaba (3.12)
+    if not self.scripted then
+        self.scheduler:every(NightSession.Task.Clock, GameConfig.Night.clockTickSeconds, function()
+            self:tickClock()
+        end)
+        self.scheduler:every(NightSession.Task.Power, GameConfig.Power.tickSeconds, function()
+            self:tickPower()
+        end)
+    end
     for _, ai in self.patrols do
         self.scheduler:every(aiTaskName(ai), ai.cfg.tickSeconds, function()
             ai:tick()
@@ -360,6 +391,22 @@ function NightSession.tickPower(self: NightSession)
     end
 end
 
+-- Métricas de porta (7.8): conta fechamentos e soma o tempo fechada
+local function noteDoor(self: NightSession, side: Types.Side, closed: boolean)
+    local m = self.state.metrics
+    local now = self.scheduler.elapsed
+    if closed then
+        m.doorCloses[side] = (m.doorCloses[side] or 0) + 1
+        m.doorClosedSince[side] = now
+    else
+        local since = m.doorClosedSince[side]
+        if since then
+            m.doorClosedSeconds[side] = (m.doorClosedSeconds[side] or 0) + now - since
+            m.doorClosedSince[side] = nil
+        end
+    end
+end
+
 local function fireDoor(self: NightSession, side: Types.Side, door: Types.DoorState, accepted: boolean)
     self:fire(
         Enums.Remote.DoorStateChanged,
@@ -384,6 +431,9 @@ function NightSession.enterBlackout(self: NightSession)
     -- As portas perdem a trava magnética e abrem sozinhas
     s.doors.left.closed = false
     s.doors.right.closed = false
+    noteDoor(self, Enums.Side.Left, false)
+    noteDoor(self, Enums.Side.Right, false)
+    s.metrics.blackoutAt = self:secondsSurvived()
     fireDoor(self, Enums.Side.Left, s.doors.left, true)
     fireDoor(self, Enums.Side.Right, s.doors.right, true)
     s.tabletBatteryRemaining = GameConfig.Blackout.tabletBatterySeconds
@@ -420,6 +470,7 @@ function NightSession.toggleDoor(self: NightSession, side: Types.Side)
     local accepted = s.phase == Enums.Phase.Running and not door.jammed
     if accepted then
         door.closed = not door.closed
+        noteDoor(self, side, door.closed)
     end
     fireDoor(self, side, door, accepted)
     if accepted then
@@ -573,12 +624,52 @@ function NightSession.generatorReset(self: NightSession): { Types.TerminalLine }
     return { line(T.generatorStart, Enums.EchoKind.Info), result }
 end
 
+-- Segundos de noite corridos desde o fim do boot (métricas e bestTimeAlive)
+function NightSession.secondsSurvived(self: NightSession): number
+    local s = self.state
+    return s.hour * self.hourSeconds + s.secondsIntoHour
+end
+
+-- 7.8: uma linha JSON por noite no Output, para planilhar o playtest (Debug.logMetrics)
+local function reportMetrics(self: NightSession, result: string, enemy: Types.Enemy?)
+    if not GameConfig.Debug.logMetrics then
+        return
+    end
+    local s = self.state
+    noteDoor(self, Enums.Side.Left, false)
+    noteDoor(self, Enums.Side.Right, false)
+    local m = s.metrics
+    print(
+        "[metrics]",
+        HttpService:JSONEncode({
+            night = s.night,
+            result = result,
+            enemy = enemy,
+            hour = s.hour,
+            secondsSurvived = math.floor(self:secondsSurvived()),
+            finalPower = math.floor(s.power),
+            blackoutAt = m.blackoutAt,
+            doorCloses = m.doorCloses,
+            doorClosedSeconds = {
+                left = math.floor(m.doorClosedSeconds.left or 0),
+                right = math.floor(m.doorClosedSeconds.right or 0),
+            },
+            pings = s.pingCount,
+            commands = m.commands,
+            commandsNotFound = m.commandsNotFound,
+            minigameErrors = m.minigameErrors,
+            puzzleErrors = m.puzzleErrors,
+        })
+    )
+end
+
 function NightSession.win(self: NightSession)
     local s = self.state
     if isOver(s.phase) then
         return
     end
     log(`vitória — noite {s.night}, energia final {math.floor(s.power)}%`)
+    reportMetrics(self, "won", nil)
     self.scheduler:destroy() -- nada sobrevive à sessão (5.3)
     self:setPhase(Enums.Phase.Won)
     self:fire(Enums.Remote.NightWon, { night = s.night, nextNight = s.night + 1 } :: Types.NightWonPayload)
@@ -591,6 +682,7 @@ function NightSession.lose(self: NightSession, enemy: Types.Enemy)
         return
     end
     log(`derrota — noite {s.night}, anomalia {enemy}, hora {s.hour}`)
+    reportMetrics(self, "lost", enemy)
     self.scheduler:destroy()
     self:setPhase(Enums.Phase.Lost)
     self:fire(Enums.Remote.Jumpscare, { enemy = enemy } :: Types.JumpscarePayload)

@@ -1,7 +1,7 @@
 --!strict
 -- Bootstrap do cliente (PLANEJAMENTO 5.1): controllers, sala, menu e handshake com o servidor.
 -- Ordem: input, áudio e o glitch de relógio primeiro (os outros dependem), depois câmera/sala, HUD, portas,
--- telas cheias (tablet, terminal, manual) e menu.
+-- telas cheias (tablet, terminal, manual), o palco 3D do menu e o menu.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
@@ -23,6 +23,9 @@ local TerminalController = require(script.Parent.TerminalController)
 local NotebookController = require(script.Parent.NotebookController)
 local SonarController = require(script.Parent.SonarController)
 local SettingsController = require(script.Parent.SettingsController)
+local CustomNightController = require(script.Parent.CustomNightController)
+local TutorialController = require(script.Parent.TutorialController)
+local MenuScene = require(script.Parent.MenuScene)
 local MenuController = require(script.Parent.MenuController)
 
 -- O jogo tem HUD própria; a CoreGui padrão (chat, lista de jogadores, mochila) atrapalha o clima.
@@ -53,6 +56,9 @@ TerminalController.init()
 NotebookController.init()
 SonarController.init()
 SettingsController.init()
+CustomNightController.init()
+TutorialController.init()
+MenuScene.init()
 MenuController.init()
 HudController.dawnFinished:Connect(function()
     MenuController.show()

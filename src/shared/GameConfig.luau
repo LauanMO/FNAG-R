@@ -82,6 +82,23 @@ local GameConfig = {
     Settings = {
         maxUpdatesPerSecond = 5, -- rate limit de UpdateSettings (5.9)
     },
+    Save = {
+        storeName = "PlayerSave_v1", -- 5.10
+        version = 1,
+        retryDelays = { 1, 2, 4 }, -- uma tentativa por item; espera o valor antes da próxima (5.10)
+        minSecondsBetweenWrites = 6, -- limite do Roblox para a mesma chave
+        closeTimeoutSeconds = 25, -- BindToClose tem 30 s; sobra margem
+    },
+    Tutorial = {
+        lookDegrees = 30, -- girar a câmera pelo menos isto para cada lado (3.12)
+        typewriterSeconds = 0.035, -- por caractere (3.12)
+        figureFadeSeconds = 4, -- fade-in da Unidade de Assistência de Debug (3.12)
+        pollSeconds = 0.1, -- frequência com que o servidor confere a condição do passo
+    },
+    CustomNight = {
+        maxLevel = 20, -- 3.13
+        presentationNight = 7, -- volume do cue de chegada e sonar vêm desta noite
+    },
     -- Níveis por noite (7.4). Índice = noite (0 = tutorial, 1-7). "custom" é montada em runtime na Fase 7.
     Nights = {
         [0] = { square = 0, triangle = 0, circle = 0, hexagon = 0, arrivalCueVolume = 1.0, sonar = false },
@@ -139,6 +156,8 @@ local GameConfig = {
         deadCamerasAtStart = {} :: { string }, -- ex.: { "CAM1" } para testar "em nó cego". Só em Studio.
         levelOverrides = {} :: { [string]: number }, -- ex.: { hexagon = 20 } para testar a Fase 5. Só em Studio.
         forceSonar = false, -- true liga o sonar 3D em qualquer noite, para testar a Fase 6. Só em Studio.
+        unlockAllNights = true, -- libera todas as noites e a Custom Night. Só em Studio.
+        logMetrics = false, -- imprime as métricas de 7.8 no fim de cada noite
     },
 }
 

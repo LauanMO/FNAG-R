@@ -1,7 +1,10 @@
 --!strict
--- MenuController: menu principal (PLANEJAMENTO 5.12 / B.8). Envia intenções (StartNight); o servidor decide.
--- New Game, Continue e Configurações funcionam; Tutorial e Custom Night ficam bloqueados até a Fase 7.
--- Apresentação: estática de fundo e o glitch do título (RNG 1-15; acima de 10, 400 ms de glitch a cada 5 s).
+-- MenuController: menu principal (PLANEJAMENTO 3.1, 5.12, B.8). Envia intenções (StartNight); o servidor decide.
+-- New Game recomeça pela Noite 0 (tutorial); Continue abre a noite salva; Tutorial revê a Noite 0 depois de
+-- concluída; Custom Night abre depois de vencer a última noite (3.13); Configurações ajusta o volume.
+-- Apresentação: o palco 3D com os inimigos atrás (MenuScene), estática por cima e o glitch do título
+-- (RNG 1-15; acima de 10, 400 ms de glitch a cada 5 s), que também faz os holofotes do palco piscarem.
+-- A ação principal (Continue quando há noite salva, senão New Game) fica em destaque.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -15,11 +18,12 @@ local Strings = require(Shared:WaitForChild("Strings"))
 local Types = require(Shared:WaitForChild("Types"))
 local UiKit = require(script.Parent.ui.UiKit)
 local MenuGui = require(script.Parent.ui.MenuGui)
+local MenuScene = require(script.Parent.MenuScene)
 local AudioController = require(script.Parent.AudioController)
 local SettingsController = require(script.Parent.SettingsController)
+local CustomNightController = require(script.Parent.CustomNightController)
 
--- Fase 7: New Game passa a abrir a Noite 0 (tutorial), ver 3.1
-local NEW_GAME_NIGHT = 1
+local LAST_NIGHT = #GameConfig.Nights -- 7: o índice 0 (tutorial) fica fora do comprimento
 -- Se o servidor não responder com NightStarted (não deveria acontecer), libera o menu de novo
 local PENDING_TIMEOUT_SECONDS = 3
 
@@ -42,18 +46,27 @@ local MenuController = {}
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 local menu = MenuGui.build(playerGui)
 local save: Types.SaveData? = nil
+local saveAvailable = true
 local pending = false
 local rng = Random.new() -- apresentação, não lógica de jogo (Apêndice C.6)
 local fxConn: RBXScriptConnection? = nil
 local titlePosition = menu.title.Position
 
+-- Em Studio, Debug.unlockAllNights libera tudo (o servidor aplica a mesma regra)
+local function debugUnlocked(): boolean
+    return RunService:IsStudio() and GameConfig.Debug.unlockAllNights
+end
+
 local function canContinue(data: Types.SaveData): boolean
-    return data.currentNight > NEW_GAME_NIGHT and GameConfig.Nights[data.currentNight] ~= nil
+    return data.tutorialDone and data.currentNight >= 1 and GameConfig.Nights[data.currentNight] ~= nil
 end
 
 local function refresh()
     local data = save
-    if data and canContinue(data) then
+    local continuable = data ~= nil and canContinue(data)
+    UiKit.setPrimary(menu.continueBtn, continuable)
+    UiKit.setPrimary(menu.newGame, not continuable)
+    if data and continuable then
         menu.continueBtn.Text = string.format(Strings.Menu.continueNight, data.currentNight)
         UiKit.setEnabled(menu.continueBtn, not pending)
     else
@@ -61,16 +74,20 @@ local function refresh()
         UiKit.setEnabled(menu.continueBtn, false)
     end
     UiKit.setEnabled(menu.newGame, data ~= nil and not pending)
+    UiKit.setEnabled(menu.tutorial, data ~= nil and (data.tutorialDone or debugUnlocked()) and not pending)
+    local customUnlocked = data ~= nil and (data.maxNightUnlocked > LAST_NIGHT or debugUnlocked())
+    UiKit.setEnabled(menu.customNight, customUnlocked and not pending)
     UiKit.setEnabled(menu.settings, not pending)
+    menu.saveWarning.Visible = data ~= nil and not saveAvailable
 end
 
-local function startNight(night: number)
+local function startNight(payload: Types.StartNightPayload)
     if pending then
         return
     end
     pending = true
     refresh()
-    Remotes.get(Enums.Remote.StartNight):FireServer({ night = night } :: Types.StartNightPayload)
+    Remotes.get(Enums.Remote.StartNight):FireServer(payload)
     task.delay(PENDING_TIMEOUT_SECONDS, function()
         if pending then
             pending = false
@@ -134,6 +151,7 @@ local function startEffects()
             sinceCheck = 0
             if rng:NextInteger(1, GLITCH_ROLL_MAX) > GLITCH_ROLL_THRESHOLD then
                 glitchLeft = GLITCH_SECONDS
+                MenuScene.glitch(GLITCH_SECONDS)
                 AudioController.play(Enums.Cue.MenuGlitch)
             end
         end
@@ -153,22 +171,22 @@ function MenuController.show()
     pending = false
     refresh()
     menu.gui.Enabled = true
+    MenuScene.start()
     startEffects()
 end
 
 function MenuController.hide()
     menu.gui.Enabled = false
+    MenuScene.stop()
     stopEffects()
     SettingsController.hide()
+    CustomNightController.hide()
 end
 
 function MenuController.init()
-    -- Tutorial e Custom Night chegam na Fase 7; Custom Night só depois de vencer a Noite 7
-    UiKit.setEnabled(menu.tutorial, false)
-    UiKit.setEnabled(menu.customNight, false)
-
     Remotes.get(Enums.Remote.SaveLoaded).OnClientEvent:Connect(function(payload: Types.SaveLoadedPayload)
         save = payload.save
+        saveAvailable = payload.available
         refresh()
     end)
     Remotes.get(Enums.Remote.NightStarted).OnClientEvent:Connect(function()
@@ -178,13 +196,23 @@ function MenuController.init()
 
     menu.newGame.Activated:Connect(function()
         if UiKit.isEnabled(menu.newGame) then
-            startNight(NEW_GAME_NIGHT)
+            startNight({ night = Enums.Night.Tutorial, newGame = true })
         end
     end)
     menu.continueBtn.Activated:Connect(function()
         local data = save
         if data and UiKit.isEnabled(menu.continueBtn) then
-            startNight(data.currentNight)
+            startNight({ night = data.currentNight })
+        end
+    end)
+    menu.tutorial.Activated:Connect(function()
+        if UiKit.isEnabled(menu.tutorial) then
+            startNight({ night = Enums.Night.Tutorial })
+        end
+    end)
+    menu.customNight.Activated:Connect(function()
+        if UiKit.isEnabled(menu.customNight) then
+            CustomNightController.show()
         end
     end)
     menu.settings.Activated:Connect(function()

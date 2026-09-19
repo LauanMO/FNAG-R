@@ -25,6 +25,7 @@ local ClockGlitch = require(script.Parent.ClockGlitch)
 -- Números de apresentação, não de jogo (Apêndice C.7)
 local DAWN_CLOCK_SECONDS = 3 -- "6:00 AM" antes de "NOITE N CONCLUÍDA" (3.10)
 local DAWN_MESSAGE_SECONDS = 3
+local CREDITS_SECONDS = 8 -- B.7: créditos depois da última noite
 local MESSAGE_SECONDS = 2.5
 local PULSE_SECONDS = 0.6 -- barra de energia pulsando abaixo do aviso (3.2)
 local PULSE_TRANSPARENCY = 0.6
@@ -300,28 +301,48 @@ local function onCameraDead(payload: Types.CameraDeadPayload)
     )
 end
 
--- 3.10: "6:00 AM" grande, 3s depois "NOITE N CONCLUÍDA", depois volta ao menu.
+local function finishDawn()
+    dawn.gui.Enabled = false
+    setVisible(false)
+    HudController.dawnFinished:Fire()
+end
+
+-- 3.10: "6:00 AM" grande, 3 s depois "NOITE N CONCLUÍDA", depois volta ao menu. Depois da última noite,
+-- os créditos (B.7). A Noite 0 pula o relógio: o tutorial não anda o tempo.
 -- task.delay é apresentação, não lógica de jogo (Apêndice C.5); a sessão já acabou no servidor.
 local function onNightWon(payload: Types.NightWonPayload)
     dawnToken += 1
     local token = dawnToken
     setPulse(false)
+    local tutorial = payload.night == Enums.Night.Tutorial
+    local lastNight = payload.night == #GameConfig.Nights
     dawn.clock.Text = Strings.clock(GameConfig.Night.hours)
-    dawn.message.Visible = false
+    dawn.clock.Visible = not tutorial
+    dawn.message.Text = string.format(Strings.EndScreens.nightComplete, Strings.nightLabel(payload.night))
+    dawn.message.Visible = tutorial
+    dawn.credits.Visible = false
     dawn.gui.Enabled = true
-    task.delay(DAWN_CLOCK_SECONDS, function()
+    task.delay(if tutorial then 0 else DAWN_CLOCK_SECONDS, function()
         if token ~= dawnToken then
             return
         end
-        dawn.message.Text = string.format(Strings.EndScreens.nightComplete, payload.night)
         dawn.message.Visible = true
         task.delay(DAWN_MESSAGE_SECONDS, function()
             if token ~= dawnToken then
                 return
             end
-            dawn.gui.Enabled = false
-            setVisible(false)
-            HudController.dawnFinished:Fire()
+            if not lastNight then
+                finishDawn()
+                return
+            end
+            dawn.clock.Visible = false
+            dawn.message.Visible = false
+            dawn.credits.Visible = true
+            task.delay(CREDITS_SECONDS, function()
+                if token == dawnToken then
+                    finishDawn()
+                end
+            end)
         end)
     end)
 end

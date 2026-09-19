@@ -20,6 +20,7 @@ local Signal = require(Shared:WaitForChild("Signal"))
 local Strings = require(Shared:WaitForChild("Strings"))
 local Types = require(Shared:WaitForChild("Types"))
 local AudioController = require(script.Parent.AudioController)
+local EnemyModels = require(script.Parent.EnemyModels)
 local OfficeCamera = require(script.Parent.OfficeCamera)
 local JumpscareGui = require(script.Parent.ui.JumpscareGui)
 
@@ -34,15 +35,9 @@ local LUNGE_SECONDS = 0.4
 local LUNGE_END_OFFSET = CFrame.new(0, -0.4, -3.2) -- em frente à câmera, enchendo a tela
 local LUNGE_FOV = 45 -- o campo de visão fecha junto com o avanço
 local LUNGE_SHAKE_DEGREES = 2.5
-local MODEL_SIZE = Vector3.new(4, 4, 4)
+local MODEL_SIZE = 4 -- studs
 local MODEL_LIGHT_BRIGHTNESS = 3 -- o inimigo se ilumina: aparece mesmo no blackout
 local MODEL_LIGHT_RANGE = 14
-local COLOR_SQUARE = Color3.fromRGB(40, 90, 255)
-local COLOR_TRIANGLE = Color3.fromRGB(230, 40, 40)
-local COLOR_EYES = Color3.fromRGB(5, 5, 8)
-local EYE_SIZE = Vector3.new(0.9, 0.9, 0.2)
-local EYE_OFFSET_X = 1.1
-local EYE_OFFSET_Y = 0.7
 -- Hexágono (3.8.4)
 local HEX_EXPAND_SECONDS = 1.4
 local HEX_FLASH_AT_SECONDS = 1.4 -- estouro: estática e ciano tomam a tela
@@ -60,7 +55,6 @@ local HEX_TONE_START_SPEED = 0.5
 local HEX_TONE_END_SPEED = 2.2
 local HEX_FLASH_TRANSPARENCY_MIN = 0.1
 local HEX_FLASH_TRANSPARENCY_MAX = 0.55
-local COLOR_HEX = Color3.fromRGB(70, 220, 255)
 
 local JumpscareController = {}
 
@@ -71,6 +65,7 @@ local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 local ui = JumpscareGui.build(playerGui)
 local rng = Random.new() -- apresentação, não lógica de jogo (Apêndice C.6)
 local currentNight = 1
+local currentLevels: Types.NightLevels? = nil -- para o TENTAR DE NOVO da Custom Night
 local token = 0 -- invalida coreografia pendente
 local models: { Model } = {}
 local connections: { RBXScriptConnection } = {}
@@ -121,7 +116,7 @@ end
 local function newModel(name: string): (Model, BasePart)
     local model = Instance.new("Model")
     model.Name = name
-    local root = makePart("Part", Vector3.new(0.2, 0.2, 0.2), COLOR_EYES)
+    local root = makePart("Part", Vector3.new(0.2, 0.2, 0.2), EnemyModels.Color.eyes)
     root.Name = "Root"
     root.Transparency = 1
     root.Parent = model
@@ -138,36 +133,6 @@ local function addLight(parent: BasePart, color: Color3)
     light.Parent = parent
 end
 
--- Quadrado Azul (3.8.1): cubo com dois olhos pretos na face da frente (−Z)
-local function buildSquare(): Model
-    local model, root = newModel("Jumpscare")
-    local body = makePart("Part", MODEL_SIZE, COLOR_SQUARE)
-    body.Parent = model
-    for _, dx in { -1, 1 } do
-        local eye = makePart("Part", EYE_SIZE, COLOR_EYES)
-        eye.CFrame = CFrame.new(dx * EYE_OFFSET_X, EYE_OFFSET_Y, -MODEL_SIZE.Z / 2)
-        eye.Parent = model
-    end
-    addLight(root, COLOR_SQUARE)
-    return model
-end
-
--- Triângulo Vermelho (3.8.2): prisma de duas cunhas encostadas; o triângulo fica no plano XY, virado para a câmera
-local function buildTriangle(): Model
-    local model, root = newModel("Jumpscare")
-    local base = MODEL_SIZE.X
-    local halfBase = base / 2
-    local thickness = MODEL_SIZE.Z / 2
-    for _, sign in { -1, 1 } do
-        local half = makePart("WedgePart", Vector3.new(thickness, MODEL_SIZE.Y, halfBase), COLOR_TRIANGLE)
-        -- a face vertical da cunha (lado +Z dela) encosta no centro; a rampa desce para fora
-        half.CFrame = CFrame.new(sign * base / 4, 0, 0) * CFrame.Angles(0, -sign * math.pi / 2, 0)
-        half.Parent = model
-    end
-    addLight(root, COLOR_TRIANGLE)
-    return model
-end
-
 -- Grade hexagonal plana (plano XY), cada hexágono com 6 arestas de neon ciano
 local function buildHexGrid(): Model
     local model = newModel("HexGrid")
@@ -182,7 +147,7 @@ local function buildHexGrid(): Model
                 local a2 = math.rad(60 * (k + 1) + 30)
                 local x1, y1 = cx + HEX_RADIUS * math.cos(a1), cy + HEX_RADIUS * math.sin(a1)
                 local x2, y2 = cx + HEX_RADIUS * math.cos(a2), cy + HEX_RADIUS * math.sin(a2)
-                local edge = makePart("Part", Vector3.new(HEX_RADIUS, HEX_LINE, HEX_LINE), COLOR_HEX)
+                local edge = makePart("Part", Vector3.new(HEX_RADIUS, HEX_LINE, HEX_LINE), EnemyModels.Color.hexagon)
                 edge.Material = Enum.Material.Neon
                 edge.CFrame = CFrame.new((x1 + x2) / 2, (y1 + y2) / 2, 0)
                     * CFrame.Angles(0, 0, math.atan2(y2 - y1, x2 - x1))
@@ -234,7 +199,10 @@ local function physicalScare(enemy: Types.Enemy, side: Types.Side)
         :WaitForChild(Enums.Office.SoundAnchor) :: BasePart
     local endCFrame = OfficeCamera.getCFrame() * LUNGE_END_OFFSET * CFrame.Angles(0, math.pi, 0)
     local startCFrame = CFrame.new(doorway.Position) * endCFrame.Rotation
-    local model = if enemy == Enums.Enemy.Square then buildSquare() else buildTriangle()
+    local model, root = EnemyModels.build(enemy, MODEL_SIZE)
+    model.Name = "Jumpscare"
+    addLight(root, EnemyModels.Color[enemy])
+    table.insert(models, model)
     model.Parent = Workspace
     lunge(model, startCFrame, endCFrame)
     startStatic()
@@ -308,7 +276,7 @@ end
 local function showGameOver(enemy: Types.Enemy)
     stopEffects()
     OfficeCamera.setShake(0)
-    ui.title.Text = string.format(Strings.EndScreens.criticalFailure, currentNight)
+    ui.title.Text = string.format(Strings.EndScreens.criticalFailure, Strings.nightLabel(currentNight))
     ui.anomaly.Text = string.format(Strings.EndScreens.anomaly, Strings.EnemyName[enemy] or enemy)
     ui.panel.Visible = true
     buttonsArmed = true
@@ -341,6 +309,7 @@ end
 
 local function onNightStarted(payload: Types.NightStartedPayload)
     currentNight = payload.night
+    currentLevels = payload.config
     token += 1
     cleanup()
     OfficeCamera.unlock()
@@ -354,7 +323,18 @@ function JumpscareController.init()
         buttonsArmed = false
         cleanup()
         OfficeCamera.unlock()
-        Remotes.get(Enums.Remote.StartNight):FireServer({ night = currentNight } :: Types.StartNightPayload)
+        -- A Custom Night repete com os mesmos níveis; as outras, com o mesmo número de noite
+        local levels = currentLevels
+        local payload: Types.StartNightPayload = { night = currentNight }
+        if currentNight == Enums.Night.Custom and levels then
+            payload.custom = {
+                square = levels.square,
+                triangle = levels.triangle,
+                circle = levels.circle,
+                hexagon = levels.hexagon,
+            }
+        end
+        Remotes.get(Enums.Remote.StartNight):FireServer(payload)
     end)
     ui.menu.Activated:Connect(function()
         if not buttonsArmed then

@@ -2,6 +2,7 @@
 -- OfficeCamera: câmera travada na cadeira com arco de giro limitado e suavizado (PLANEJAMENTO 3.4).
 -- Não lê input: pega o alvo de olhar do InputController (5.11). Também dá à coreografia dos jumpscares e do
 -- sonar o que eles precisam: travar o olhar, tremer e mudar o campo de visão (3.5, 3.8).
+-- Fica suspensa enquanto o menu está aberto: o palco do menu (MenuScene) é dono da câmera nesse tempo.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -24,6 +25,8 @@ local anchorCFrame = CFrame.identity
 local cameraRef: Camera? = nil
 local shakeRadians = 0
 local fovTween: Tween? = nil
+local fieldOfView = FIELD_OF_VIEW -- último campo de visão pedido; volta a valer quando a câmera é reativada
+local active = true
 local rng = Random.new() -- apresentação, não lógica de jogo (Apêndice C.6)
 
 function OfficeCamera.init()
@@ -40,6 +43,9 @@ function OfficeCamera.init()
 
     local maxYaw = math.rad(GameConfig.Camera.maxYawDegrees)
     RunService:BindToRenderStep(BIND_NAME, Enum.RenderPriority.Camera.Value, function(dt: number)
+        if not active then
+            return
+        end
         -- O PlayerModule do Roblox pode devolver a câmera para Custom; reforça a cada frame
         if camera.CameraType ~= Enum.CameraType.Scriptable then
             camera.CameraType = Enum.CameraType.Scriptable
@@ -91,17 +97,22 @@ function OfficeCamera.setShake(degrees: number)
     shakeRadians = math.rad(math.max(0, degrees))
 end
 
--- Muda o campo de visão; seconds = 0 aplica na hora
-function OfficeCamera.tweenFieldOfView(fov: number, seconds: number)
-    local camera = cameraRef
-    if not camera then
-        return
-    end
+local function cancelFieldOfViewTween()
     local current = fovTween
     if current then
         current:Cancel()
         fovTween = nil
     end
+end
+
+-- Muda o campo de visão; seconds = 0 aplica na hora. Suspensa, só guarda o valor para quando voltar.
+function OfficeCamera.tweenFieldOfView(fov: number, seconds: number)
+    fieldOfView = fov
+    local camera = cameraRef
+    if not camera or not active then
+        return
+    end
+    cancelFieldOfViewTween()
     if seconds <= 0 then
         camera.FieldOfView = fov
         return
@@ -117,6 +128,25 @@ end
 
 function OfficeCamera.defaultFieldOfView(): number
     return FIELD_OF_VIEW
+end
+
+-- false suspende a câmera da sala: ela para de mexer na câmera até ser reativada (o menu, MenuScene).
+-- Ao voltar, a cadeira olha para a frente, se nada travou o olhar, e o campo de visão é o último pedido.
+function OfficeCamera.setActive(value: boolean)
+    if active == value then
+        return
+    end
+    active = value
+    cancelFieldOfViewTween()
+    local camera = cameraRef
+    if value and camera then
+        if lockedYaw == nil then
+            yaw = 0
+        end
+        camera.CameraType = Enum.CameraType.Scriptable
+        camera.FieldOfView = fieldOfView
+        camera.CFrame = OfficeCamera.getCFrame()
+    end
 end
 
 -- Volta ao controle do jogador, sem tremor e com o campo de visão normal

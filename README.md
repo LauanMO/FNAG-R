@@ -74,6 +74,20 @@ src/
 └── ui/       → StarterGui                    vazio por enquanto
 ```
 
+## Save e testes
+
+O save usa DataStore. No Studio ele só funciona com o place publicado e **Game Settings → Security → Enable Studio Access to API Services** ligado; sem isso o jogo entra em modo sem save e avisa no menu.
+
+Atalhos de teste no bloco `Debug` do `src/shared/GameConfig.luau` (só valem no Studio): `unlockAllNights`, `levelOverrides`, `forceSonar`, `deadCamerasAtStart`, `timeScale`, `deterministicSeed`, `logAI`, `logMetrics`.
+
+## Balanceamento
+
+```
+python tools/balance_sim.py
+```
+
+Simula as noites 1-7 contra um jogador simulado, com os números do `GameConfig`. Resultados e propostas estão na seção 7.9 do planejamento.
+
 ## Status
 
 Ver a seção 6 do [planejamento](PLANEJAMENTO_ROBLOX.md) — cada fase tem tarefas e critério de aceite.

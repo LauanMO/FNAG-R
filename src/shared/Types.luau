@@ -16,6 +16,24 @@ export type TerminalLine = { text: string, kind: EchoKind }
 
 export type DoorState = { closed: boolean, jammed: boolean }
 
+-- Custom Night (3.13): um nível 0..20 por IA
+export type CustomLevels = { square: number, triangle: number, circle: number, hexagon: number }
+
+-- Noite 0 (3.12): passo atual, o que ele espera e a contagem de pings quando começou
+export type TutorialState = { step: number, waitFor: string, baseline: number }
+
+-- Métricas de playtest (7.8), impressas no fim da noite com Debug.logMetrics
+export type NightMetrics = {
+    doorCloses: { [string]: number }, -- lado → quantas vezes fechou
+    doorClosedSeconds: { [string]: number }, -- lado → tempo total fechada
+    doorClosedSince: { [string]: number }, -- lado → quando fechou (Scheduler.elapsed), se está fechada
+    commands: number,
+    commandsNotFound: number,
+    minigameErrors: number,
+    puzzleErrors: number,
+    blackoutAt: number?, -- segundos de noite quando a energia zerou
+}
+
 -- Uma linha de GameConfig.Nights (7.4)
 export type NightLevels = {
     square: number,
@@ -48,6 +66,10 @@ export type NightState = {
     puzzle: { gate: string, options: { string }, locked: boolean }?, -- locked: nova tabela a caminho após erro
     restoreCooldown: number,
     pingBusy: boolean, -- do RequestPing até PingCooldownOver (3.5a)
+    pingCount: number, -- pings resolvidos nesta noite (tutorial e métricas)
+    scriptedNodes: { [string]: boolean }, -- anomalias falsas do tutorial que o radar enxerga (3.12)
+    tutorial: TutorialState?,
+    metrics: NightMetrics,
     -- PatrolAI (Fase 3), HexagonAI (5a), CircleAI (5b). `any`: classes de módulos diferentes, só para debug.
     ai: { [string]: any },
 }
@@ -83,7 +105,9 @@ export type SaveData = {
 
 -- Payloads dos Remotes (5.6). O servidor valida tipo e faixa de tudo que recebe (5.9).
 -- Cliente → Servidor
-export type StartNightPayload = { night: number }
+-- newGame: New Game (zera a noite atual e começa pelo tutorial). custom: Custom Night (ignora night).
+export type StartNightPayload = { night: number, newGame: boolean?, custom: CustomLevels? }
+export type TutorialAdvancePayload = { step: number }
 export type ToggleDoorPayload = { side: Side }
 export type SetTabletOpenPayload = { open: boolean }
 export type SetTerminalOpenPayload = { open: boolean }
@@ -93,7 +117,7 @@ export type MinigamePickPayload = { index: number }
 export type UpdateSettingsPayload = { masterVolume: number } -- 0..1
 
 -- Servidor → Cliente
-export type SaveLoadedPayload = { save: SaveData }
+export type SaveLoadedPayload = { save: SaveData, available: boolean } -- available = false: modo sem save
 export type NightStartedPayload = { night: number, config: NightLevels }
 export type NightPhasePayload = { phase: Phase }
 export type HourChangedPayload = { hour: number }
@@ -124,5 +148,6 @@ export type MinigameResultPayload = { success: boolean, cameraKilled: string?, t
 export type BlackoutStartedPayload = { tabletBatterySeconds: number }
 export type NightWonPayload = { night: number, nextNight: number }
 export type JumpscarePayload = { enemy: Enemy }
+export type TutorialStepPayload = { step: number, lines: { string }, waitFor: string }
 
 return {}
