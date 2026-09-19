@@ -16,7 +16,8 @@ Regras:
 ## Estado atual
 - Fases 0 a 6 validadas no Studio. Fase 7 (tutorial, save em DataStore, progressão, Custom Night, créditos, métricas) implementada; aceite pendente.
 - Menu com palco 3D (PLANEJAMENTO 5.12): `MenuScene` assume a câmera enquanto o menu está aberto (`OfficeCamera.setActive`); modelos dos inimigos em `EnemyModels`. Aceite no Studio pendente.
-- Próxima: decidir as propostas de balanceamento (PLANEJAMENTO 7.9) com playtest e depois a Fase 8 (publicação).
+- Fase 8 (publicação): parte do repositório feita (auditorias, arte em `assets/publicacao/`, textos em PLANEJAMENTO 9.1 e 9.2). Falta o Creator Hub: configurações, questionário, upload, publicação privada.
+- Próxima: playtest com pessoas decide as propostas de balanceamento (PLANEJAMENTO 7.9).
 - Balanceamento: `python tools/balance_sim.py` lê o GameConfig; as regras de jogo estão reimplementadas nele, então mudança de regra no Luau exige mudar lá também.
 - Sons são placeholders escolhidos pelo nome; o time precisa ouvir e trocar no GameConfig.
 - Tablet, terminal e manual são telas exclusivas (`src/client/Overlay.luau`). Serviços registram IAs com `session:addAITask`.

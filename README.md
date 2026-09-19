@@ -88,6 +88,14 @@ python tools/balance_sim.py
 
 Simula as noites 1-7 contra um jogador simulado, com os números do `GameConfig`. Resultados e propostas estão na seção 7.9 do planejamento.
 
+## Arte da página
+
+```
+python tools/make_store_art.py
+```
+
+Gera o ícone (512×512) e a thumbnail (1920×1080) em `assets/publicacao/`, com as cores de `EnemyModels` e `UiKit`. Precisa de Pillow (`pip install pillow`).
+
 ## Status
 
 Ver a seção 6 do [planejamento](PLANEJAMENTO_ROBLOX.md) — cada fase tem tarefas e critério de aceite.

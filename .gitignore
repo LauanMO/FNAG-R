@@ -12,6 +12,10 @@ sourcemap.json
 roblox.yml
 roblox.toml
 
+# Python (tools/)
+__pycache__/
+*.pyc
+
 # Editor / SO
 .vscode/
 .idea/

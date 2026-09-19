@@ -1633,6 +1633,8 @@ Maior fase. Dividir em 5a (Terminal + Manual + Hexágono + Puzzle) e 5b (Círcul
 
 Ver seção 9.
 
+> Status 19/09/2026: o que dá para fazer no repositório está feito (auditoria de áudio, texto livre e flags de debug; ícone e thumbnail em `assets/publicacao/`; texto da página em 9.1; respostas do questionário em 9.2). O resto é no Creator Hub e no Studio, com o time: configurações, questionário, upload da arte, teste privado.
+
 ---
 
 ## 7. BALANCEAMENTO INICIAL — TABELAS
@@ -1800,14 +1802,52 @@ Vale registrar para não "consertar" o que funciona: o teste d20 vs nível; a es
 
 - [ ] **Configurações do experience:** nome, descrição, gênero "Horror", `MaxPlayers = 1`, dispositivos: PC, mobile, console (testar os três).
 - [ ] **Questionário de maturidade** (obrigatório): marcar **Medo** (jumpscares, ambiente de tensão) em nível moderado; sem violência gráfica, sem sangue, sem conteúdo romântico. Isso define a faixa etária sugerida. Preencher com honestidade — errar aqui pode derrubar o jogo.
-- [ ] **Áudio:** só sons próprios ou da biblioteca do Roblox com licença de uso. Nada extraído de outros jogos. Sons subidos pelo time passam por moderação (pode levar horas).
-- [ ] **Texto do jogador:** o terminal nunca exibe texto livre (5.6). Se isso mudar, `TextService:FilterStringAsync` é obrigatório.
+- [x] **Áudio:** só sons próprios ou da biblioteca do Roblox com licença de uso. Nada extraído de outros jogos. Sons subidos pelo time passam por moderação (pode levar horas).
+  > Conferido em 19/09/2026 pela API pública de assets: os 23 IDs únicos de `GameConfig.Audio.ids` são da conta `Roblox` (cliques de UI) ou `ProSoundEffects` (parceira licenciada da biblioteca), tipo áudio, liberados para uso. Os nomes batem com os comentários do GameConfig. Continua pendente o time ouvir e trocar o que não servir (3.11).
+- [x] **Texto do jogador:** o terminal nunca exibe texto livre (5.6). Se isso mudar, `TextService:FilterStringAsync` é obrigatório.
+  > Conferido em 19/09/2026: o servidor só ecoa o comando canônico da lista fechada (`Commands.resolve`), e `command not found` não repete o que foi digitado. O cliente só imprime o que o servidor manda e textos fixos de `Strings`. O texto digitado aparece só na própria caixa de entrada do jogador.
 - [ ] **DataStore:** habilitar "Enable Studio Access to API Services" só para testar; desabilitar para produção se não precisar.
-- [ ] **Ícone e thumbnails:** 512×512 e 1920×1080. Sugestão: as quatro formas em preto com uma linha de estática. Sem texto pequeno (não lê no mobile).
-- [ ] **Nome:** verificar disponibilidade de "Five Nights at Geometry". Se ocupado, variações: "Five Nights at Geometry OS", "Geometry OS: Five Nights".
+- [x] **Ícone e thumbnails:** 512×512 e 1920×1080. Sugestão: as quatro formas em preto com uma linha de estática. Sem texto pequeno (não lê no mobile).
+  > Gerados por `python tools/make_store_art.py` em `assets/publicacao/` (`icon_512.png`, `thumbnail_1920x1080.png`). As cores vêm de `EnemyModels` e `UiKit`. Falta subir no Creator Hub. O Roblox aceita várias thumbnails: vale somar capturas do jogo (menu com o palco, a sala, o terminal).
+- [x] **Nome:** verificar disponibilidade de "Five Nights at Geometry". Se ocupado, variações: "Five Nights at Geometry OS", "Geometry OS: Five Nights".
+  > Busca na pesquisa do Roblox em 19/09/2026: nenhuma experiência com esse nome (só jogos de FNAF e de Geometry Dash). O Roblox não exige nome único; a busca é para evitar confusão.
 - [ ] **Privacidade:** publicar privado primeiro; testar com 3-5 amigos por uma semana; depois público.
 - [ ] **Versões:** o Roblox guarda versões publicadas — dá para reverter. Mas o Git é a fonte de verdade.
-- [ ] **Monetização:** nenhuma na v1. Se um dia: Custom Night como Game Pass é o candidato natural. Nunca vender vantagem que quebre o pilar 1.
+- [x] **Monetização:** nenhuma na v1. Se um dia: Custom Night como Game Pass é o candidato natural. Nunca vender vantagem que quebre o pilar 1.
+  > O código não usa `MarketplaceService`.
+- [x] **Flags de debug** [NOVO]: todo override de `GameConfig.Debug` (`timeScale`, `deterministicSeed`, `levelOverrides`, `forceSonar`, `deadCamerasAtStart`, `unlockAllNights`) só vale com `RunService:IsStudio()`. Deixar algum ligado não afeta o jogo publicado. Os `log*` imprimem também no servidor publicado; deixá-los desligados.
+
+### 9.1 Texto da página
+
+- **Nome:** Five Nights at Geometry
+- **Gênero:** Horror. **Jogadores por servidor:** 1 (Game Settings → Places → Max Players).
+- **Descrição (PT-BR):**
+
+  > Você é o operador do turno da noite do GEOMETRY OS. Da meia-noite às 6 da manhã, quatro anomalias tentam entrar na sala de controle, e a energia é limitada.
+  >
+  > QUADRADO AZUL e TRIÂNGULO VERMELHO vêm pelos corredores. Escute os passos, veja a silhueta na porta e feche na hora certa: porta fechada gasta energia.
+  > CÍRCULO AMARELO infecta as câmeras. Abra o terminal e ache a palavra corrompida antes que ele cegue o radar.
+  > HEXÁGONO CIANO rompe o firewall e sabota portas, relógio e energia. Consulte o manual, digite o reparo e resolva as portas lógicas.
+  >
+  > Use o radar com cuidado, economize energia e sobreviva a 7 noites. A Noite 0 ensina tudo. Venceu a última? A Custom Night é liberada.
+  >
+  > Terror para um jogador. PC, celular e console.
+
+  A interface do jogo está em português. Descrição em inglês só quando houver tradução (seção 10), para não prometer o que o jogo não tem.
+
+### 9.2 Questionário de maturidade — respostas sugeridas
+
+Responder pelo que o jogo tem hoje; se algo mudar, refazer o questionário.
+
+| Tema | Resposta | Por quê |
+|---|---|---|
+| Medo | Sim, moderado | Jumpscares com estática e som alto, clima de tensão, escuridão no blackout. |
+| Violência | Não | Os inimigos são formas geométricas; o jumpscare não mostra ferimento nem morte explícita. |
+| Sangue | Não | |
+| Linguagem forte, humor grosseiro | Não | Textos em `Strings.luau`. |
+| Romance, álcool/drogas, apostas | Não | |
+| Comunicação entre jogadores | Não | Um jogador por servidor; a CoreGui (inclusive o chat) fica escondida (`Main.client`). |
+| Compras | Não | Sem monetização na v1. |
 
 ---
 
@@ -2097,4 +2137,4 @@ Falas da Unidade de Assistência de Debug. As quatro primeiras são as originais
 
 ---
 
-*Fim do documento. Próxima ação: validar a Fase 7 e o menu com palco 3D (5.12) no Studio, decidir as propostas de 7.9 com o playtest e seguir para a Fase 8 (publicação).*
+*Fim do documento. Próxima ação: Fase 8 no Creator Hub (seção 9: configurações, questionário, arte, publicação privada e teste com 3-5 pessoas), com o playtest decidindo as propostas de 7.9.*
